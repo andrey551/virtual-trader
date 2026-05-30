@@ -206,21 +206,21 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
         asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
         if asset:
             category = asset.category
-            # Default mock prices based on ticker
-            mock_match = {
-                "BTC-USD": 67250.45,
-                "ETH-USD": 3450.80,
-                "SOL-USD": 168.20,
-                "AAPL": 189.84,
-                "TSLA": 178.46,
-                "NVDA": 948.22,
-                "EURUSD=X": 1.0850,
-                "GBPUSD=X": 1.2720,
-                "^GSPC": 5277.51
-            }
-            price = mock_match.get(asset.ticker, 100.0)
+            
+        # Fetch real-time price via MCP
+        is_binance_crypto = ("USDT" in ticker and "-" not in ticker and "/" not in ticker)
+        
+        if is_binance_crypto:
+            res = await mcp_client.call_tool("get_crypto_ticker", {"symbol": ticker, "depth": 1})
+            if res.get("status") == "success":
+                price = float(res.get("price", 0.0))
+        else:
+            res = await mcp_client.call_tool("get_market_price", {"ticker": ticker})
+            if res.get("status") == "success":
+                price = float(res.get("price", 0.0))
+                
     except Exception as e:
-        print(f"[WebSocket Debate] DB lookup failed: {e}")
+        print(f"[WebSocket Debate] DB lookup or Price fetch failed: {e}")
         
     # Check Cache
     try:

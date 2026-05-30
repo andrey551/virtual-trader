@@ -15,7 +15,6 @@ import {
   Search
 } from "lucide-react";
 
-import { ASSETS_MOCK, EVENTS_MOCK } from "./data";
 import DynamicChart from "./DynamicChart";
 import { BACKEND_URL, WS_URL } from "../../config";
 
@@ -105,14 +104,27 @@ function AnalyticsContent() {
   const symbolParam = searchParams.get("symbol") || "BTC-USD";
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>(ASSETS_MOCK as unknown as AnalyticsAsset[]);
+  const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>([]);
   
-  // Initialize with expanded candles
-  const initialDefault = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
   const [selectedAsset, setSelectedAsset] = useState<AnalyticsAsset>({
-    ...initialDefault,
-    candles: generateExpandedCandles(initialDefault.price, initialDefault.rating, initialDefault.category)
-  } as unknown as AnalyticsAsset);
+    id: "loading",
+    name: "Loading asset...",
+    category: "Crypto",
+    symbol: symbolParam,
+    price: 0.0,
+    change: 0.0,
+    changePercent: 0.0,
+    marketCap: "N/A",
+    volume24h: "N/A",
+    rsi: 50,
+    macd: "Neutral",
+    rating: "HOLD",
+    confidence: 0,
+    predictionAccuracy: 0,
+    candles: [],
+    technicalReasons: [],
+    fundamentalReasons: []
+  });
 
   const filteredAssets = assetsList.filter(asset => 
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase())
@@ -160,21 +172,20 @@ function AnalyticsContent() {
         const res = await fetch(`${BACKEND_URL}/api/assets`);
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((item: ApiAssetSummary) => {
+          const mapped = data.map((item: any) => {
             let cat = item.category;
             if (cat === "STOCKS") cat = "Stocks";
             else if (cat === "CRYPTO") cat = "Crypto";
             else if (cat === "FOREX") cat = "Forex";
             else if (cat === "INDEX") cat = "Indices";
             
-            const mockMatch = ASSETS_MOCK.find(m => m.symbol === item.ticker);
             return {
               id: String(item.id),
               symbol: item.ticker,
               name: item.name,
               category: cat,
-              price: mockMatch ? mockMatch.price : 100.0,
-              changePercent: mockMatch ? mockMatch.changePercent : 0.0,
+              price: Number(item.price || 100.0),
+              changePercent: Number(item.changePercent || 0.0),
               rating: item.system_verdict,
               confidence: Number(item.confidence_level),
               predictionAccuracy: Number(item.accuracy_score)
@@ -209,8 +220,6 @@ function AnalyticsContent() {
             volume: number;
           }
 
-          const defaultAsset = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
-          
           const rawCandles = candleData.candles.map((c: ApiCandle) => ({
             time: c.time,
             open: c.open,
@@ -249,25 +258,29 @@ function AnalyticsContent() {
           }
           
           const mappedAsset = {
-            ...defaultAsset,
             id: String(detail.id),
             symbol: detail.ticker,
             name: detail.name,
             category: detail.category === "STOCKS" ? "Stocks" : (detail.category === "CRYPTO" ? "Crypto" : (detail.category === "FOREX" ? "Forex" : "Indices")),
-            rating: detail.system_verdict,
-            confidence: Number(detail.confidence_level),
-            predictionAccuracy: Number(detail.accuracy_score),
+            price: Number(detail.price || 0.0),
+            change: Number(detail.change || 0.0),
+            changePercent: Number(detail.changePercent || 0.0),
+            marketCap: detail.marketCap || "N/A",
+            volume24h: detail.volume24h || "N/A",
+            peRatio: detail.peRatio || undefined,
+            rsi: Number(detail.rsi || 50.0),
+            macd: detail.macd || "Neutral",
+            rating: detail.system_verdict || "HOLD",
+            confidence: Number(detail.confidence_level || 0),
+            predictionAccuracy: Number(detail.accuracy_score || 0),
+            technicalReasons: detail.technicalReasons || [],
+            fundamentalReasons: detail.fundamentalReasons || [],
             candles: candles
           };
-          setSelectedAsset(mappedAsset as unknown as AnalyticsAsset);
+          setSelectedAsset(mappedAsset);
         }
-      } catch {
-        const localMock = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
-        const expandedCandles = generateExpandedCandles(localMock.price, localMock.rating, localMock.category);
-        setSelectedAsset({
-          ...localMock,
-          candles: expandedCandles
-        } as unknown as AnalyticsAsset);
+      } catch (err) {
+        console.error("Failed to load asset details:", err);
       }
     }
     loadAssetDetail();
@@ -312,7 +325,44 @@ function AnalyticsContent() {
     return () => clearInterval(interval);
   }, [selectedAsset.symbol, selectedAsset.price]);
 
-  const relatedEvents = EVENTS_MOCK.filter(ev => ev.tickers.includes(selectedAsset.symbol));
+  const [relatedEvents, setRelatedEvents] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    category: string;
+    severity: "high" | "medium" | "low";
+    impactScore: string;
+  }[]>([]);
+
+  useEffect(() => {
+    async function loadRelatedEvents() {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/events/search-similar?query_text=${symbolParam}&limit=5`);
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((ev: any) => {
+            const score = Math.abs(Number(ev.sentiment_score || 0));
+            let severity: "high" | "medium" | "low" = "low";
+            if (score >= 0.6) severity = "high";
+            else if (score >= 0.3) severity = "medium";
+            
+            return {
+              id: String(ev.id),
+              title: ev.title,
+              description: ev.summary || "",
+              category: ev.title.toLowerCase().includes("oil") ? "Energy & Geopolitical" : "Macroeconomics",
+              severity: severity,
+              impactScore: Number(ev.sentiment_score) >= 0 ? "POSITIVE" : "NEGATIVE"
+            };
+          });
+          setRelatedEvents(mapped);
+        }
+      } catch {
+        // ignore
+      }
+    }
+    loadRelatedEvents();
+  }, [symbolParam]);
 
   const displayedTechnicals = showAllTechnical 
     ? selectedAsset.technicalReasons 

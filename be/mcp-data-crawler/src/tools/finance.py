@@ -2,6 +2,22 @@ from datetime import datetime
 import yfinance as yf
 from src.utils.cache import global_cache
 
+def format_large_number(num):
+    if num is None:
+        return "N/A"
+    try:
+        num = float(num)
+        if num >= 1e12:
+            return f"${num / 1e12:.2f}T"
+        elif num >= 1e9:
+            return f"${num / 1e9:.2f}B"
+        elif num >= 1e6:
+            return f"${num / 1e6:.2f}M"
+        else:
+            return f"${num:,.2f}"
+    except Exception:
+        return "N/A"
+
 async def handle_get_market_price(arguments: dict) -> dict:
     ticker_str = arguments.get("ticker")
     if not ticker_str:
@@ -68,13 +84,41 @@ async def handle_get_market_price(arguments: dict) -> dict:
             change = last_price - prev_close
             change_percent = (change / prev_close) * 100.0
             
+        # Fetch detailed metrics (market cap, volume, P/E, name)
+        market_cap_val = None
+        volume_val = None
+        pe_ratio_val = None
+        long_name_val = ticker_upper
+        
+        try:
+            f_info = t.fast_info
+            market_cap_val = f_info.get("market_cap")
+            volume_val = f_info.get("last_volume")
+        except Exception:
+            pass
+            
+        try:
+            info_full = t.info
+            long_name_val = info_full.get("longName") or info_full.get("shortName") or long_name_val
+            if not market_cap_val:
+                market_cap_val = info_full.get("marketCap")
+            if not volume_val:
+                volume_val = info_full.get("volume") or info_full.get("regularMarketVolume") or info_full.get("volume24h")
+            pe_ratio_val = info_full.get("trailingPE") or info_full.get("forwardPE")
+        except Exception:
+            pass
+            
         result = {
             "status": "success",
             "ticker": ticker_upper,
+            "name": long_name_val,
             "price": round(last_price, 4),
             "change": round(change, 4),
             "changePercent": round(change_percent, 2),
             "currency": currency,
+            "marketCap": format_large_number(market_cap_val),
+            "volume24h": format_large_number(volume_val),
+            "peRatio": f"{pe_ratio_val:.2f}" if pe_ratio_val is not None else None,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
         

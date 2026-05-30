@@ -17,45 +17,6 @@ interface GlobalEvent {
   impactedAssets: { symbol: string; impact: number; reason: string }[];
 }
 
-const EVENTS_MOCK: GlobalEvent[] = [
-  {
-    id: "fed-rate",
-    title: "Fed Interest Rate Cuts Hinted",
-    description: "Federal Reserve chair signals interest rate reductions starting Q3 due to moderating core inflation data.",
-    severity: "high",
-    category: "Macroeconomics",
-    impactedAssets: [
-      { symbol: "BTC-USD", impact: 4.5, reason: "Increased liquidity in financial markets drives speculative capital into crypto." },
-      { symbol: "NVDA", impact: 3.2, reason: "Lower cost of debt encourages tech conglomerates to expand capital expenditure on AI." },
-      { symbol: "EUR-USD", impact: 1.2, reason: "Weakening Dollar index (DXY) pushes EUR/USD higher." },
-      { symbol: "GOLD", impact: 2.8, reason: "Lower treasury yields increase demand for non-yielding safe-haven assets." }
-    ]
-  },
-  {
-    id: "oil-rig",
-    title: "Oil Rig Pipeline Explosion",
-    description: "A major pipeline explosion in the North Sea disrupts 8% of European regional Brent crude supply capacity.",
-    severity: "high",
-    category: "Geopolitical Crisis",
-    impactedAssets: [
-      { symbol: "GOLD", impact: 2.1, reason: "Geopolitical panic and general inflation risk hedge buying." },
-      { symbol: "TSLA", impact: -2.5, reason: "Rising transportation and shipping component costs drag margins." },
-      { symbol: "EUR-USD", impact: -1.1, reason: "Higher energy costs damage Eurozone manufacturing competitiveness." }
-    ]
-  },
-  {
-    id: "ai-chip-ban",
-    title: "EU AI Safety & Chip Export Restrictions",
-    description: "EU commission announces stricter compliance rules on high-end computing server farms and hardware transfers.",
-    severity: "medium",
-    category: "Regulations",
-    impactedAssets: [
-      { symbol: "NVDA", impact: -3.8, reason: "Compliance overhead and export friction points in European markets." },
-      { symbol: "BTC-USD", impact: -1.5, reason: "Regulatory crackdowns on data centers trigger miner relocations." }
-    ]
-  }
-];
-
 interface ApiEventImpact {
   asset_ticker: string;
   impact_direction: string;
@@ -71,8 +32,8 @@ interface ApiEvent {
 }
 
 export default function EventsPage() {
-  const [events, setEvents] = useState<GlobalEvent[]>(EVENTS_MOCK);
-  const [selectedEvent, setSelectedEvent] = useState<GlobalEvent>(EVENTS_MOCK[0]);
+  const [events, setEvents] = useState<GlobalEvent[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<GlobalEvent | null>(null);
 
   useEffect(() => {
     async function fetchEvents() {
@@ -147,11 +108,23 @@ export default function EventsPage() {
           }
         }
       } catch (err) {
-        console.error("Failed to fetch events, using fallback mock data", err);
+        console.error("Failed to fetch events:", err);
       }
     }
     fetchEvents();
   }, []);
+
+  if (!selectedEvent) {
+    return (
+      <div className="p-8 text-zinc-550 font-mono text-xs max-w-2xl mx-auto space-y-4 border border-[#ebdcb9] rounded-2xl bg-white mt-12 shadow-sm select-none text-center">
+        <p className="font-bold text-amber-900">[NOTICE]: No active geopolitical events found in consensus engine.</p>
+        <p className="text-zinc-500 leading-relaxed">
+          The background AsyncIOScheduler crawler worker automatically scans macroeconomic and geopolitical news topics every 60 seconds.
+          Please wait for the background schedule loops to trigger or run news imports via the backend CLI.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8 space-y-8 animate-fadeIn">

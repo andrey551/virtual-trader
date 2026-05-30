@@ -31,3 +31,23 @@ class AssetRead(AssetBase):
     class Config:
         from_attributes = True
         coerce_numbers_to_str = True
+
+class TechnicalReasonSchema(BaseModel):
+    summary: str
+    detail: str
+
+class AssetReadWithPrice(AssetRead):
+    price: float = 100.0
+    changePercent: float = 0.0
+
+class AssetDetailRead(AssetRead):
+    price: float = 100.0
+    change: float = 0.0
+    changePercent: float = 0.0
+    marketCap: str = "N/A"
+    volume24h: str = "N/A"
+    peRatio: Optional[str] = None
+    rsi: float = 50.0
+    macd: str = "Neutral"
+    technicalReasons: list[TechnicalReasonSchema] = []
+    fundamentalReasons: list[str] = []

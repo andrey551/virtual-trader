@@ -14,7 +14,6 @@ import {
   Terminal,
   Search
 } from "lucide-react";
-import { ASSETS_MOCK } from "./analysis/data";
 import { BACKEND_URL, WS_URL } from "../config";
 
 interface ScraperLog {
@@ -94,6 +93,7 @@ export default function Home() {
     rating: string;
     confidence: number;
     predictionAccuracy: number;
+    alphaOutperformance: number;
   }
 
   interface ApiAsset {
@@ -106,7 +106,7 @@ export default function Home() {
     accuracy_score: string | number;
   }
 
-  const [assets, setAssets] = useState<DashboardAsset[]>(ASSETS_MOCK as unknown as DashboardAsset[]);
+  const [assets, setAssets] = useState<DashboardAsset[]>([]);
   
   useEffect(() => {
     async function loadAssets() {
@@ -121,23 +121,23 @@ export default function Home() {
             else if (cat === "FOREX") cat = "Forex";
             else if (cat === "INDEX") cat = "Indices";
             
-            const mockMatch = ASSETS_MOCK.find(m => m.symbol === item.ticker);
             return {
               id: String(item.id),
               symbol: item.ticker,
               name: item.name,
               category: cat,
-              price: mockMatch ? mockMatch.price : 100.0,
-              changePercent: mockMatch ? mockMatch.changePercent : 0.0,
+              price: Number(item.price || 100.0),
+              changePercent: Number(item.changePercent || 0.0),
               rating: item.system_verdict,
               confidence: Number(item.confidence_level),
-              predictionAccuracy: Number(item.accuracy_score)
+              predictionAccuracy: Number(item.accuracy_score),
+              alphaOutperformance: Number(item.alpha_outperformance || 0.0)
             };
           });
           setAssets(mapped);
         }
       } catch {
-        // Fallback silently to static mocks
+        // Fallback silently
       }
     }
     loadAssets();
@@ -177,6 +177,16 @@ export default function Home() {
     asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.category.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  
+  const validAccuracyAssets = assets.filter(a => Number(a.predictionAccuracy) > 0);
+  const avgAccuracy = validAccuracyAssets.length > 0 
+    ? (validAccuracyAssets.reduce((sum, a) => sum + Number(a.predictionAccuracy), 0) / validAccuracyAssets.length).toFixed(1)
+    : "0.0";
+
+  const validAlphaAssets = assets.filter(a => Number(a.alphaOutperformance) > 0);
+  const avgAlpha = validAlphaAssets.length > 0 
+    ? (validAlphaAssets.reduce((sum, a) => sum + Number(a.alphaOutperformance), 0) / validAlphaAssets.length).toFixed(1)
+    : "0.0";
 
   return (
     <div className="p-8 space-y-8 animate-fadeIn max-w-7xl mx-auto">
@@ -214,11 +224,11 @@ export default function Home() {
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             </div>
             <div className="space-y-1">
-              <p className="text-4xl font-black text-emerald-800 tracking-tight font-mono">88.4%</p>
+              <p className="text-4xl font-black text-emerald-800 tracking-tight font-mono">{avgAccuracy}%</p>
               <p className="text-xs text-zinc-700 font-bold">Directional Hit Rate</p>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
-              Verified directional correctness (predicting upward/downward shifts) across 1,420 backtested scenario runs.
+              Average correct trend prediction correctness (upward/downward consensus) across active tickers in the consensus database.
             </p>
           </div>
 
@@ -229,11 +239,11 @@ export default function Home() {
               <Award className="w-5 h-5 text-amber-600" />
             </div>
             <div className="space-y-1">
-              <p className="text-4xl font-black text-amber-800 tracking-tight font-mono">+18.7%</p>
+              <p className="text-4xl font-black text-amber-800 tracking-tight font-mono">+{avgAlpha}%</p>
               <p className="text-xs text-zinc-700 font-bold">vs Benchmark Buy-and-Hold</p>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
-              Consolidated consensus trade advices historically outperformed major indices (S&P 500 / BTC Hodl) by an average of +18.7% yearly.
+              Consolidated consensus trade outperformance compared to standard passive market buy-and-hold benchmarks.
             </p>
           </div>
 
@@ -449,7 +459,7 @@ export default function Home() {
             </h3>
 
             <div className="space-y-4">
-              {ASSETS_MOCK.filter(a => a.rating === 'BUY').sort((a,b) => b.confidence - a.confidence).map((asset, index) => (
+              {assets.filter(a => a.rating === 'BUY' || a.rating === 'STRONG_BUY').sort((a,b) => b.confidence - a.confidence).slice(0, 3).map((asset, index) => (
                 <Link 
                   key={asset.id}
                   href={`/analysis?symbol=${asset.symbol}`}
@@ -468,48 +478,64 @@ export default function Home() {
                   </div>
 
                   <div className="text-right select-none mt-2">
-                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">BUY</span>
+                    <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                      asset.rating === 'STRONG_BUY' ? 'bg-emerald-200 text-emerald-900' : 'bg-emerald-100 text-emerald-800'
+                    }`}>{asset.rating}</span>
                     <p className="text-[10px] text-zinc-500 font-mono mt-1">Conf: {asset.confidence}%</p>
                     <p className="text-[9px] text-amber-800 font-mono font-bold mt-0.5">Acc: {asset.predictionAccuracy || 85}%</p>
                   </div>
                 </Link>
               ))}
+              {assets.filter(a => a.rating === 'BUY' || a.rating === 'STRONG_BUY').length === 0 && (
+                <p className="text-xs text-zinc-400 text-center py-4">No active recommendations in watch list.</p>
+              )}
             </div>
           </div>
 
           {/* Consensus Weighting breakdown panel */}
-          <div className="p-4 rounded-xl bg-white/80 backdrop-blur-md border border-[#ebdcb9] space-y-3 shadow-sm select-none">
-            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest font-mono">Consensus Weighting</p>
-            <div className="space-y-2">
-              <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
-                  <span>BUY Verdicts</span>
-                  <span className="text-emerald-600 font-bold">57%</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-zinc-100">
-                  <div className="h-full rounded-full bg-emerald-500 animate-pulse" style={{ width: '57%' }}></div>
+          {(() => {
+            const buyCount = assets.filter(a => a.rating === 'BUY' || a.rating === 'STRONG_BUY').length;
+            const holdCount = assets.filter(a => a.rating === 'HOLD' || a.rating === 'NEUTRAL').length;
+            const sellCount = assets.filter(a => a.rating === 'SELL' || a.rating === 'STRONG_SELL').length;
+            const totalCount = assets.length || 1;
+            const buyPct = Math.round((buyCount / totalCount) * 100);
+            const holdPct = Math.round((holdCount / totalCount) * 100);
+            const sellPct = Math.round((sellCount / totalCount) * 100);
+            return (
+              <div className="p-4 rounded-xl bg-white/80 backdrop-blur-md border border-[#ebdcb9] space-y-3 shadow-sm select-none">
+                <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest font-mono">Consensus Weighting</p>
+                <div className="space-y-2">
+                  <div>
+                    <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
+                      <span>BUY Verdicts</span>
+                      <span className="text-emerald-600 font-bold">{buyPct}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-zinc-100">
+                      <div className="h-full rounded-full bg-emerald-500 animate-pulse" style={{ width: `${buyPct}%` }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
+                      <span>HOLD Verdicts</span>
+                      <span className="text-amber-600 font-bold">{holdPct}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-zinc-100">
+                      <div className="h-full rounded-full bg-amber-500" style={{ width: `${holdPct}%` }}></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
+                      <span>SELL Verdicts</span>
+                      <span className="text-rose-600 font-bold">{sellPct}%</span>
+                    </div>
+                    <div className="w-full h-1.5 rounded-full bg-zinc-100">
+                      <div className="h-full rounded-full bg-rose-500" style={{ width: `${sellPct}%` }}></div>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
-                  <span>HOLD Verdicts</span>
-                  <span className="text-amber-600 font-bold">29%</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-zinc-100">
-                  <div className="h-full rounded-full bg-amber-500" style={{ width: '29%' }}></div>
-                </div>
-              </div>
-              <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
-                  <span>SELL Verdicts</span>
-                  <span className="text-rose-600 font-bold">14%</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-zinc-100">
-                  <div className="h-full rounded-full bg-rose-500" style={{ width: '14%' }}></div>
-                </div>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
 
         </div>
         
