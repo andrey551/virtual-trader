@@ -29,6 +29,7 @@ export interface Asset {
   candles: Candle[];
   technicalReasons: TechnicalReason[];
   fundamentalReasons: string[];
+  predictionAccuracy?: number;
 }
 
 export interface GlobalEvent {

@@ -15,6 +15,7 @@ export const ASSETS_MOCK: Asset[] = [
     macd: "Bullish Crossover",
     rating: "BUY",
     confidence: 85,
+    predictionAccuracy: 88.5,
     candles: [
       { open: 64500, high: 66200, low: 64100, close: 65800 },
       { open: 65800, high: 66900, low: 65200, close: 66400 },
@@ -58,6 +59,7 @@ export const ASSETS_MOCK: Asset[] = [
     macd: "Neutral",
     rating: "HOLD",
     confidence: 60,
+    predictionAccuracy: 84.2,
     candles: [
       { open: 3510, high: 3580, low: 3480, close: 3540 },
       { open: 3540, high: 3590, low: 3510, close: 3570 },
@@ -101,6 +103,7 @@ export const ASSETS_MOCK: Asset[] = [
     peRatio: "42.5",
     rating: "SELL",
     confidence: 78,
+    predictionAccuracy: 89.0,
     candles: [
       { open: 192, high: 194, low: 188, close: 189 },
       { open: 189, high: 191, low: 183, close: 184 },
@@ -144,6 +147,7 @@ export const ASSETS_MOCK: Asset[] = [
     peRatio: "74.8",
     rating: "BUY",
     confidence: 92,
+    predictionAccuracy: 91.4,
     candles: [
       { open: 880, high: 902, low: 878, close: 895 },
       { open: 895, high: 920, low: 892, close: 914 },
@@ -187,6 +191,7 @@ export const ASSETS_MOCK: Asset[] = [
     peRatio: "26.2",
     rating: "HOLD",
     confidence: 65,
+    predictionAccuracy: 86.8,
     candles: [
       { open: 172.5, high: 174, low: 171, close: 171.8 },
       { open: 171.8, high: 173.2, low: 170.8, close: 172.2 },
@@ -229,6 +234,7 @@ export const ASSETS_MOCK: Asset[] = [
     macd: "Slightly Bullish",
     rating: "HOLD",
     confidence: 55,
+    predictionAccuracy: 81.5,
     candles: [
       { open: 1.0790, high: 1.0820, low: 1.0780, close: 1.0805 },
       { open: 1.0805, high: 1.0830, low: 1.0795, close: 1.0812 },
@@ -271,6 +277,7 @@ export const ASSETS_MOCK: Asset[] = [
     macd: "Bullish Rally",
     rating: "BUY",
     confidence: 80,
+    predictionAccuracy: 85.7,
     candles: [
       { open: 2310, high: 2325, low: 2305, close: 2318 },
       { open: 2318, high: 2332, low: 2312, close: 2328 },

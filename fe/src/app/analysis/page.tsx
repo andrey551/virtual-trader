@@ -149,6 +149,9 @@ function AnalyticsContent() {
               <span className="text-[11px] text-zinc-600 font-bold bg-zinc-100 px-2.5 py-1 rounded-full border border-zinc-200/55">
                 Confidence: {selectedAsset.confidence}%
               </span>
+              <span className="text-[11px] text-amber-800 font-bold bg-amber-500/10 px-2.5 py-1 rounded-full border border-amber-500/20">
+                Accuracy: {selectedAsset.predictionAccuracy || 85}%
+              </span>
             </div>
             
             <div className="w-px h-8 bg-zinc-200/60 hidden sm:block"></div>
@@ -340,6 +343,10 @@ function AnalyticsContent() {
               <div className="flex justify-between py-2 border-b border-zinc-100">
                 <span className="text-zinc-500">Verdict Confidence</span>
                 <span className="font-semibold text-zinc-800">{selectedAsset.confidence}%</span>
+              </div>
+              <div className="flex justify-between py-2 border-b border-zinc-100">
+                <span className="text-zinc-500">Model Accuracy (Hit Rate)</span>
+                <span className="font-bold text-amber-700">{selectedAsset.predictionAccuracy || 85}%</span>
               </div>
               <div className="flex justify-between py-2 border-b border-zinc-100">
                 <span className="text-zinc-500">MACD Signal</span>
