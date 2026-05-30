@@ -81,15 +81,39 @@ export default function Sidebar({ onToggle }: SidebarProps) {
         </nav>
       </div>
 
-      {/* User profile / session status */}
-      <div className="p-4 border-t border-[#ebdcb9] bg-[#fdfaf2]">
+      {/* User profile / System Telemetry */}
+      <div className="p-4 border-t border-[#ebdcb9] bg-[#fdfaf2] space-y-4">
+        {/* System Telemetry readout (highly technical) */}
+        <div className="p-3 bg-zinc-950 rounded-xl font-mono text-[9px] text-amber-500 border border-amber-500/20 space-y-1.5 shadow-inner select-none">
+          <div className="flex items-center justify-between border-b border-amber-500/10 pb-1">
+            <span className="text-zinc-500 font-bold">SWARM_TELEMETRY</span>
+            <span className="animate-pulse flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-emerald-500"></span> LIVE</span>
+          </div>
+          <div className="flex justify-between">
+            <span>SWARM_NODES</span>
+            <span className="text-zinc-300">12/12 ACTIVE</span>
+          </div>
+          <div className="flex justify-between">
+            <span>SIGMA_CONVERGENCE</span>
+            <span className="text-zinc-300">0.9825</span>
+          </div>
+          <div className="flex justify-between">
+            <span>CORE_CLOCK</span>
+            <span className="text-zinc-300">2.41 GHz</span>
+          </div>
+          <div className="flex justify-between">
+            <span>SWARM_LATENCY</span>
+            <span className="text-zinc-300">42ms</span>
+          </div>
+        </div>
+
         <div className="flex items-center gap-3 p-2 bg-[#f9f5e8] border border-[#ebdcb9]/60 rounded-xl overflow-hidden">
           <div className="w-8 h-8 rounded-lg bg-zinc-800 flex items-center justify-center font-bold text-sm text-zinc-100 shrink-0">
             U
           </div>
           <div className="truncate">
             <p className="text-xs font-bold text-zinc-800 truncate">Invest-User</p>
-            <p className="text-[10px] text-zinc-500 truncate">Expert Swarm Active</p>
+            <p className="text-[10px] text-zinc-500 truncate">Consensus Terminal</p>
           </div>
         </div>
       </div>

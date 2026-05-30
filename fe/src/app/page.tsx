@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { 
   TrendingUp, 
@@ -10,15 +10,65 @@ import {
   ShieldCheck,
   CheckCircle2,
   Award,
-  Lock
+  Lock,
+  Terminal,
+  Search
 } from "lucide-react";
 import { ASSETS_MOCK } from "./analysis/data";
 
+interface ScraperLog {
+  timestamp: string;
+  source: string;
+  message: string;
+  status: 'SUCCESS' | 'INFO' | 'SYNC';
+}
+
 export default function Home() {
+  const [logs, setLogs] = useState<ScraperLog[]>([
+    { timestamp: "13:14:02", source: "CRAWLER", message: "Yahoo Finance feed BTC-USD connected", status: "SUCCESS" },
+    { timestamp: "13:14:05", source: "SENTIMENT", message: "Scraped 240 global news headlines", status: "INFO" },
+    { timestamp: "13:14:08", source: "CONVERGENCE", message: "Swarm resolved BTC BUY verdict (85% conf)", status: "SYNC" },
+    { timestamp: "13:14:15", source: "CRAWLER", message: "Scraped central bank inflation reports", status: "SUCCESS" }
+  ]);
+
+  const [searchQuery, setSearchQuery] = useState("");
+
+  useEffect(() => {
+    const actions = [
+      { source: "CRAWLER", message: "Fetching SEC 10-Q filing indexes...", status: "SUCCESS" as const },
+      { source: "SENTIMENT", message: "Scanning social sentiment indices...", status: "INFO" as const },
+      { source: "CONVERGENCE", message: "Consensus recalculating weights...", status: "SYNC" as const },
+      { source: "CRAWLER", message: "Order book bid/ask depth parsed...", status: "SUCCESS" as const },
+      { source: "SENTIMENT", message: "Oil supply pipeline disruption feeds ingested", status: "INFO" as const },
+      { source: "CONVERGENCE", message: "MACD momentum vectors synchronized", status: "SYNC" as const }
+    ];
+
+    const interval = setInterval(() => {
+      const randomAction = actions[Math.floor(Math.random() * actions.length)];
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+      
+      const newLog = {
+        timestamp: timeStr,
+        ...randomAction
+      };
+      
+      setLogs(prev => [newLog, ...prev.slice(0, 4)]);
+    }, 3500);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const filteredAssets = ASSETS_MOCK.filter(asset => 
+    asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    asset.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
-    <div className="p-8 space-y-8 animate-fadeIn">
+    <div className="p-8 space-y-8 animate-fadeIn max-w-7xl mx-auto">
       {/* Top Header Card Banner */}
-      <div className="relative p-8 rounded-3xl bg-white border border-[#ebdcb9] overflow-hidden shadow-sm space-y-8">
+      <div className="relative p-8 rounded-3xl bg-white/80 backdrop-blur-md border border-[#ebdcb9] overflow-hidden shadow-sm space-y-8">
         <div className="absolute right-0 bottom-0 top-0 w-1/3 opacity-15 pointer-events-none bg-gradient-to-l from-amber-500 to-transparent blur-3xl"></div>
         
         {/* Tagline & Main Intro */}
@@ -47,11 +97,11 @@ export default function Home() {
           {/* Hit Rate Stat */}
           <div className="p-6 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.03] space-y-3 relative group hover:bg-emerald-500/[0.05] transition-all duration-300">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800">Forecast Accuracy</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 font-mono">Forecast Accuracy</span>
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
             </div>
             <div className="space-y-1">
-              <p className="text-4xl font-black text-emerald-800 tracking-tight">88.4%</p>
+              <p className="text-4xl font-black text-emerald-800 tracking-tight font-mono">88.4%</p>
               <p className="text-xs text-zinc-700 font-bold">Directional Hit Rate</p>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
@@ -62,11 +112,11 @@ export default function Home() {
           {/* Outperformance / Alpha Stat */}
           <div className="p-6 rounded-2xl border border-amber-500/25 bg-amber-500/[0.03] space-y-3 relative group hover:bg-amber-500/[0.05] transition-all duration-300">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-amber-800">Alpha Outperformance</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-800 font-mono">Alpha Outperformance</span>
               <Award className="w-5 h-5 text-amber-600" />
             </div>
             <div className="space-y-1">
-              <p className="text-4xl font-black text-amber-800 tracking-tight">+18.7%</p>
+              <p className="text-4xl font-black text-amber-800 tracking-tight font-mono">+18.7%</p>
               <p className="text-xs text-zinc-700 font-bold">vs Benchmark Buy-and-Hold</p>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
@@ -77,11 +127,11 @@ export default function Home() {
           {/* Verified Refresh Stat */}
           <div className="p-6 rounded-2xl border border-zinc-500/20 bg-zinc-500/[0.02] space-y-3 relative group hover:bg-zinc-500/[0.04] transition-all duration-300">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-700">Swarm Synchronization</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-700 font-mono">Swarm Synchronization</span>
               <Activity className="w-5 h-5 text-zinc-500" />
             </div>
             <div className="space-y-1">
-              <p className="text-4xl font-black text-zinc-800 tracking-tight">Near Realtime</p>
+              <p className="text-4xl font-black text-zinc-800 tracking-tight font-mono">Near Realtime</p>
               <p className="text-xs text-zinc-700 font-bold">Scraping & Sentiment Analytics</p>
             </div>
             <p className="text-[11px] text-zinc-500 leading-relaxed">
@@ -105,113 +155,230 @@ export default function Home() {
 
       </div>
 
+      {/* Ticker Search & Node Finder Bar */}
+      <div className="p-4 rounded-2xl border border-[#ebdcb9] bg-white/80 backdrop-blur-md shadow-sm relative overflow-hidden select-none">
+        <span className="absolute -top-1.5 -left-1.5 text-amber-500/30 text-xs font-mono select-none pointer-events-none font-mono">+</span>
+        <span className="absolute -top-1.5 -right-1.5 text-amber-500/30 text-xs font-mono select-none pointer-events-none font-mono">+</span>
+        <span className="absolute -bottom-1.5 -left-1.5 text-amber-500/30 text-xs font-mono select-none pointer-events-none font-mono">+</span>
+        <span className="absolute -bottom-1.5 -right-1.5 text-amber-500/30 text-xs font-mono select-none pointer-events-none font-mono">+</span>
+        
+        <div className="flex flex-col md:flex-row items-center gap-4">
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-mono text-zinc-400 bg-zinc-100 px-1.5 py-0.5 rounded select-none">
+              FIND_NODE //
+            </span>
+            <span className="text-xs font-bold text-zinc-800 uppercase tracking-widest">Asset Search Index</span>
+          </div>
+          
+          <div className="flex-1 w-full relative">
+            <input 
+              type="text"
+              placeholder="Search ticker symbol or asset name (e.g. BTC-USD, NVDA, TSLA, Gold Spot)..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-[#fdfbf6] border border-[#ebdcb9] rounded-xl px-4 py-2.5 pl-10 text-xs text-zinc-800 focus:outline-none focus:border-amber-500 font-mono shadow-inner transition-colors"
+            />
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400">
+              <Search className="w-3.5 h-3.5" />
+            </span>
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs text-zinc-450 hover:text-zinc-700 cursor-pointer"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Watchlist and Top Recommendations Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* Main Asset Watchlist */}
         <div className="lg:col-span-2 space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
+          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2 select-none">
             <Activity className="w-4 h-4 text-amber-600" />
             Global Asset Watchlist
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {ASSETS_MOCK.map((asset) => {
-              const isBullish = asset.changePercent >= 0;
-              return (
-                <Link
-                  key={asset.id}
-                  href={`/analysis?symbol=${asset.symbol}`}
-                  className="p-5 rounded-xl border border-[#ebdcb9] bg-white hover:bg-amber-50/15 hover:border-amber-500/35 transition-all duration-300 group flex flex-col justify-between space-y-4 shadow-sm"
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{asset.category}</span>
-                      <h4 className="font-extrabold text-base text-zinc-950 group-hover:text-amber-700 transition-colors mt-0.5">{asset.symbol}</h4>
-                      <p className="text-xs text-zinc-500 mt-0.5">{asset.name}</p>
-                    </div>
-                    <div className="flex flex-col items-end gap-1 select-none">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        asset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
-                        asset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-                      }`}>
-                        {asset.rating} ({asset.confidence}%)
-                      </span>
-                      <span className="text-[9px] text-amber-800 font-black bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
-                        Accuracy: {asset.predictionAccuracy || 85}%
-                      </span>
-                    </div>
-                  </div>
+            {filteredAssets.length > 0 ? (
+              filteredAssets.map((asset) => {
+                const isBullish = asset.changePercent >= 0;
+                return (
+                  <Link
+                    key={asset.id}
+                    href={`/analysis?symbol=${asset.symbol}`}
+                    className="relative p-5 rounded-xl border border-[#ebdcb9] bg-white/80 backdrop-blur-md hover:bg-amber-50/15 hover:border-amber-500/35 hover:-translate-y-1 hover:shadow-md transition-all duration-300 group flex flex-col justify-between space-y-4 shadow-sm"
+                  >
+                    {/* Corner Crosshairs for high-tech grid effect */}
+                    <span className="absolute -top-1.5 -left-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
+                    <span className="absolute -top-1.5 -right-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
+                    <span className="absolute -bottom-1.5 -left-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
+                    <span className="absolute -bottom-1.5 -right-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
 
-                  <div className="flex items-end justify-between border-t border-[#ebdcb9]/40 pt-3">
-                    <div>
-                      <p className="text-[10px] text-zinc-400">Last Price</p>
-                      <p className="font-mono font-bold text-base text-zinc-800 mt-0.5">
-                        {asset.price.toLocaleString("en-US", { style: asset.category === 'Forex' ? 'decimal' : 'currency', currency: "USD", minimumFractionDigits: asset.category === 'Forex' ? 4 : 2 })}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] text-zinc-400">24h Change</p>
-                      <div className={`flex items-center gap-1 mt-0.5 font-mono text-sm font-semibold justify-end ${isBullish ? 'text-emerald-600' : 'text-rose-600'}`}>
-                        {isBullish ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                        <span>{isBullish ? '+' : ''}{asset.changePercent}%</span>
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[8px] font-mono text-zinc-400 bg-zinc-100/80 px-1 py-0.5 rounded select-none">
+                            {"NODE // 0"}{asset.id.toUpperCase()}
+                          </span>
+                          <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-widest">{asset.category}</span>
+                        </div>
+                        <h4 className="font-extrabold text-base text-zinc-950 group-hover:text-amber-700 transition-colors mt-1.5 font-mono">{asset.symbol}</h4>
+                        <p className="text-xs text-zinc-500 mt-0.5">{asset.name}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 select-none">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                          asset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
+                          asset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {asset.rating} ({asset.confidence}%)
+                        </span>
+                        <span className="text-[9px] text-amber-800 font-black bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-mono">
+                          Acc: {asset.predictionAccuracy || 85}%
+                        </span>
                       </div>
                     </div>
-                  </div>
+
+                    {/* Confidence Progress Bar */}
+                    <div className="space-y-1 select-none">
+                      <div className="flex justify-between text-[9px] font-mono text-zinc-400">
+                        <span>SWARM_CONFIDENCE</span>
+                        <span>{asset.confidence}%</span>
+                      </div>
+                      <div className="w-full h-1 bg-zinc-100 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            asset.rating === 'BUY' ? 'bg-emerald-500' :
+                            asset.rating === 'SELL' ? 'bg-rose-500' : 'bg-amber-500'
+                          }`} 
+                          style={{ width: `${asset.confidence}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-end justify-between border-t border-[#ebdcb9]/40 pt-3">
+                      <div>
+                        <p className="text-[10px] text-zinc-400 font-mono">Last Price</p>
+                        <p className="font-mono font-bold text-base text-zinc-800 mt-0.5">
+                          {asset.price.toLocaleString("en-US", { style: asset.category === 'Forex' ? 'decimal' : 'currency', currency: "USD", minimumFractionDigits: asset.category === 'Forex' ? 4 : 2 })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-zinc-400 font-mono">24h Change</p>
+                        <div className={`flex items-center gap-1 mt-0.5 font-mono text-sm font-semibold justify-end ${isBullish ? 'text-emerald-600' : 'text-rose-600'}`}>
+                          {isBullish ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                          <span>{isBullish ? '+' : ''}{asset.changePercent}%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })
+            ) : (
+              <div className="col-span-2 p-8 rounded-xl border border-dashed border-amber-500/30 bg-amber-500/[0.02] flex flex-col items-center justify-center text-center space-y-4">
+                <p className="text-xs font-mono text-amber-900 font-bold">
+                  [WARNING]: Asset Node &apos;{searchQuery}&apos; not found in cached consensus swarm.
+                </p>
+                <p className="text-[11px] text-zinc-500 max-w-md">
+                  This asset ticker is not stored locally. Trigger the playwright crawler to scrape global telemetry indexes for this symbol.
+                </p>
+                <Link 
+                  href="/playground" 
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 text-white font-mono font-bold text-[10px] uppercase hover:bg-amber-700 transition-all select-none cursor-pointer border border-amber-500 shadow-sm"
+                >
+                  Configure Crawler Node
                 </Link>
-              );
-            })}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Top Picks Sidebar */}
-        <div className="space-y-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-amber-600" />
-            Top Recommendations
-          </h3>
-
-          <div className="space-y-4">
-            {ASSETS_MOCK.filter(a => a.rating === 'BUY').sort((a,b) => b.confidence - a.confidence).map((asset, index) => (
-              <Link 
-                key={asset.id}
-                href={`/analysis?symbol=${asset.symbol}`}
-                className="p-4 rounded-xl border border-[#ebdcb9] bg-white hover:bg-amber-500/5 transition-all flex items-center justify-between shadow-sm group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-amber-600/10 text-amber-800 font-bold flex items-center justify-center text-sm border border-[#ebdcb9]/40">
-                    #{index + 1}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-zinc-900 group-hover:text-amber-700 transition-colors">{asset.symbol}</h4>
-                    <p className="text-[10px] text-zinc-500">{asset.name}</p>
-                  </div>
+        <div className="space-y-6">
+          
+          {/* Swarm Engine Live Terminal (quantitative logs) */}
+          <div className="relative p-5 rounded-2xl border border-zinc-800 bg-zinc-950 text-emerald-400 font-mono text-[10px] space-y-3 shadow-inner overflow-hidden select-none">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                <span className="font-bold text-zinc-400 uppercase tracking-widest text-[9px] flex items-center gap-1">
+                  <Terminal className="w-3 h-3 text-emerald-500" />
+                  Swarm Engine Logs
+                </span>
+              </div>
+              <span className="text-[8px] text-zinc-500">REFRESH // 3.5s</span>
+            </div>
+            
+            <div className="space-y-1.5 max-h-36 overflow-y-auto scrollbar-none">
+              {logs.map((log, idx) => (
+                <div key={idx} className="flex items-start gap-2 leading-relaxed animate-fadeIn">
+                  <span className="text-zinc-500">[{log.timestamp}]</span>
+                  <span className={`font-bold shrink-0 ${
+                    log.status === 'SUCCESS' ? 'text-emerald-400' :
+                    log.status === 'SYNC' ? 'text-amber-400' : 'text-blue-400'
+                  }`}>
+                    {log.source} {"//"}
+                  </span>
+                  <span className="text-zinc-300 truncate">{log.message}</span>
                 </div>
-
-                <div className="text-right select-none">
-                  <span className="text-xs font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">BUY</span>
-                  <p className="text-[10px] text-zinc-500 font-medium mt-1">Confidence: {asset.confidence}%</p>
-                  <p className="text-[9px] text-amber-800 font-bold mt-0.5">Accuracy: {asset.predictionAccuracy || 85}%</p>
-                </div>
-              </Link>
-            ))}
+              ))}
+            </div>
           </div>
 
-          {/* Consenus Stats panel */}
-          <div className="p-4 rounded-xl bg-white border border-[#ebdcb9] space-y-3 shadow-sm">
-            <p className="text-xs font-bold text-zinc-500">Market Consensus Breakdown</p>
+          <div className="space-y-4">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 flex items-center gap-2 select-none">
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              Top Recommendations
+            </h3>
+
+            <div className="space-y-4">
+              {ASSETS_MOCK.filter(a => a.rating === 'BUY').sort((a,b) => b.confidence - a.confidence).map((asset, index) => (
+                <Link 
+                  key={asset.id}
+                  href={`/analysis?symbol=${asset.symbol}`}
+                  className="relative p-4 rounded-xl border border-[#ebdcb9] bg-white/80 backdrop-blur-md hover:bg-amber-500/5 hover:-translate-x-1 transition-all duration-300 flex items-center justify-between shadow-sm group"
+                >
+                  {/* Visual Rank code */}
+                  <span className="absolute top-1 left-2 text-[7px] font-mono text-zinc-400">RANK_SIGMA_{index + 1}</span>
+                  <div className="flex items-center gap-3 mt-2">
+                    <div className="w-8 h-8 rounded-lg bg-amber-600/10 text-amber-800 font-mono font-black flex items-center justify-center text-sm border border-[#ebdcb9]/40">
+                      #{index + 1}
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-zinc-900 group-hover:text-amber-700 transition-colors font-mono">{asset.symbol}</h4>
+                      <p className="text-[10px] text-zinc-500">{asset.name}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right select-none mt-2">
+                    <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-800">BUY</span>
+                    <p className="text-[10px] text-zinc-500 font-mono mt-1">Conf: {asset.confidence}%</p>
+                    <p className="text-[9px] text-amber-800 font-mono font-bold mt-0.5">Acc: {asset.predictionAccuracy || 85}%</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </div>
+
+          {/* Consensus Weighting breakdown panel */}
+          <div className="p-4 rounded-xl bg-white/80 backdrop-blur-md border border-[#ebdcb9] space-y-3 shadow-sm select-none">
+            <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest font-mono">Consensus Weighting</p>
             <div className="space-y-2">
               <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
                   <span>BUY Verdicts</span>
                   <span className="text-emerald-600 font-bold">57%</span>
                 </div>
                 <div className="w-full h-1.5 rounded-full bg-zinc-100">
-                  <div className="h-full rounded-full bg-emerald-500" style={{ width: '57%' }}></div>
+                  <div className="h-full rounded-full bg-emerald-500 animate-pulse" style={{ width: '57%' }}></div>
                 </div>
               </div>
               <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
                   <span>HOLD Verdicts</span>
                   <span className="text-amber-600 font-bold">29%</span>
                 </div>
@@ -220,7 +387,7 @@ export default function Home() {
                 </div>
               </div>
               <div>
-                <div className="flex justify-between text-[10px] text-zinc-500 mb-1">
+                <div className="flex justify-between text-[10px] text-zinc-500 mb-1 font-mono">
                   <span>SELL Verdicts</span>
                   <span className="text-rose-600 font-bold">14%</span>
                 </div>
@@ -230,6 +397,7 @@ export default function Home() {
               </div>
             </div>
           </div>
+
         </div>
         
       </div>
