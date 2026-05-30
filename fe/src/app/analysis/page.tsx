@@ -119,6 +119,8 @@ function AnalyticsContent() {
   
   const [forecastOffset, setForecastOffset] = useState(0);
   const [liveStatus, setLiveStatus] = useState("SYS_ACTIVE");
+  const [selectedInterval, setSelectedInterval] = useState("1d");
+  const [selectedPeriod, setSelectedPeriod] = useState("3mo");
 
   // Accordion states
   const [showAllTechnical, setShowAllTechnical] = useState(false);
@@ -136,6 +138,8 @@ function AnalyticsContent() {
     setExpandedReasonIndex(null);
     setForecastOffset(0);
     setLiveStatus("SYS_ACTIVE");
+    setSelectedInterval("1d");
+    setSelectedPeriod("3mo");
   }
 
   interface ApiAssetSummary {
@@ -184,13 +188,12 @@ function AnalyticsContent() {
     loadAssets();
   }, []);
 
-  // Load selected asset details and candles on symbolParam change
+  // Load selected asset details and candles on symbol, interval, or period changes
   useEffect(() => {
     async function loadAssetDetail() {
       try {
         const detailRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}`);
-        // Request 3 months of candles instead of 1 month
-        const candleRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}/candles?interval=1d&period=3mo`);
+        const candleRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
         
         if (detailRes.ok && candleRes.ok) {
           const detail = await detailRes.json();
@@ -208,7 +211,7 @@ function AnalyticsContent() {
           const defaultAsset = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
           
           const rawCandles = candleData.candles.map((c: ApiCandle) => ({
-            time: c.time.split("T")[0],
+            time: c.time,
             open: c.open,
             high: c.high,
             low: c.low,
@@ -267,7 +270,7 @@ function AnalyticsContent() {
       }
     }
     loadAssetDetail();
-  }, [symbolParam]);
+  }, [symbolParam, selectedInterval, selectedPeriod]);
 
   // WebSocket Live Price wiggler for the selected asset
   useEffect(() => {
@@ -433,13 +436,40 @@ function AnalyticsContent() {
           </div>
         </div>
 
+        {/* Timeframe/Interval Selector Tab-bar */}
+        <div className="flex items-center gap-2 border-b border-zinc-100 pb-2 select-none">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest mr-2 font-mono">Timeframe:</span>
+          {[
+            { label: "1m", value: "1m", period: "1d" },
+            { label: "5m", value: "5m", period: "1d" },
+            { label: "15m", value: "15m", period: "5d" },
+            { label: "1h", value: "1h", period: "1mo" },
+            { label: "1d", value: "1d", period: "3mo" }
+          ].map((tf) => (
+            <button
+              key={tf.value}
+              onClick={() => {
+                setSelectedInterval(tf.value);
+                setSelectedPeriod(tf.period);
+              }}
+              className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${
+                selectedInterval === tf.value
+                  ? "bg-amber-500/10 text-amber-900 border-amber-500/30"
+                  : "bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 border-transparent cursor-pointer"
+              }`}
+            >
+              {tf.label}
+            </button>
+          ))}
+        </div>
+
         {/* 70/30 width and h-[460px] height layout inside the unified top card */}
         <div className="grid grid-cols-1 md:grid-cols-10 gap-6 items-stretch">
           
           {/* Left Sub-Column (70%): MASSIVE Candlestick Chart */}
           <div className="md:col-span-7 flex flex-col justify-between h-[460px]">
             <div className="flex-1 bg-[#fdfbf6] border border-[#ebdcb9]/60 rounded-xl overflow-hidden p-4 min-h-[360px]">
-              <DynamicChart selectedAsset={selectedAsset} forecastOffset={forecastOffset} />
+              <DynamicChart selectedAsset={selectedAsset} forecastOffset={forecastOffset} interval={selectedInterval} />
             </div>
             <div className="flex items-center justify-between text-[9px] text-zinc-400 mt-2">
               <span>* Dotted wicks indicate system forecast models.</span>
