@@ -2,7 +2,7 @@ import os
 import sys
 import json
 from langchain_google_genai import ChatGoogleGenerativeAI
-from src.config import GEMINI_API_KEY
+from src.config import GEMINI_API_KEY, GEMINI_FLASH_MODEL, GEMINI_PRO_MODEL
 from src.personas import AGENT_PERSONAS
 from src.state import SwarmState, AgentOpinion, DebateMessage
 
@@ -11,15 +11,15 @@ llm_flash = None
 llm_pro = None
 
 if GEMINI_API_KEY:
-    # 9 Specialists run on Gemini 1.5 Flash for speed & cost optimization
+    # 9 Specialists run on Flash Lite for speed & cost optimization
     llm_flash = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash",
+        model=GEMINI_FLASH_MODEL,
         google_api_key=GEMINI_API_KEY,
         temperature=0.5
     )
-    # Swarm Moderator runs on Gemini 1.5 Pro for deep logical synthesis
+    # Swarm Moderator runs on Flash for deep logical synthesis
     llm_pro = ChatGoogleGenerativeAI(
-        model="gemini-1.5-pro",
+        model=GEMINI_PRO_MODEL,
         google_api_key=GEMINI_API_KEY,
         temperature=0.2
     )

@@ -19,7 +19,17 @@ if not settings.DATABASE_URL.startswith("sqlite"):
     except Exception as e:
         print(f"[Database] Warning: Failed to create pgvector extension: {e}")
 
+# Import models here to ensure they are registered before create_all
+from src.models.asset import Asset
+from src.models.event import NewsEvent, EventAssetImpact
+from src.models.recommendation import Recommendation
+from src.models.debate import AgentDebate
+from src.models.prediction_cache import PredictionCache
+
 Base.metadata.create_all(bind=engine)
+
+# Semaphore to limit concurrent swarm-engine subprocesses
+SWARM_SEMAPHORE = asyncio.Semaphore(3)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -173,8 +183,11 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     import sys
     import os
     import json
+    import uuid
     from src.database import SessionLocal
     from src.models.asset import Asset
+    from src.models.debate import AgentDebate
+    from src.models.prediction_cache import PredictionCache
 
     await websocket.accept()
     print(f"[WebSocket Debate] Agent session {session_id} connected")
@@ -208,8 +221,34 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
             price = mock_match.get(asset.ticker, 100.0)
     except Exception as e:
         print(f"[WebSocket Debate] DB lookup failed: {e}")
-    finally:
-        db.close()
+        
+    # Check Cache
+    try:
+        cache = db.query(PredictionCache).filter(PredictionCache.ticker == ticker).order_by(PredictionCache.created_at.desc()).first()
+        if cache:
+            diff_pct = abs(price - cache.price_at_predict) / cache.price_at_predict
+            if diff_pct < 0.01:
+                print(f"[WebSocket Debate] Cache HIT for {ticker}. Diff: {diff_pct:.4f}. Streaming cached debate...")
+                debates = db.query(AgentDebate).filter(AgentDebate.session_id == cache.session_id).order_by(AgentDebate.id).all()
+                for d in debates:
+                    payload = {
+                        "agent_name": d.agent_name,
+                        "avatar_code": d.avatar_code,
+                        "message": d.message,
+                        "status": "COMPLETED",
+                        "session_id": session_id
+                    }
+                    await websocket.send_json(payload)
+                    await asyncio.sleep(0.1) # small delay for UX
+                
+                db.close()
+                # Keep connection alive
+                while True:
+                    await websocket.receive_text()
+                    await asyncio.sleep(1)
+                return
+    except Exception as e:
+        print(f"[WebSocket Debate] Cache check failed: {e}")
         
     # Build absolute path to swarm-engine main.py CLI
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -230,48 +269,88 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     if settings.GEMINI_API_KEY:
         env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
     
+    db_session_id = f"cache_{uuid.uuid4().hex[:8]}"
+    
     try:
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            cwd=os.path.dirname(script_path),
-            env=env
-        )
-        
-        # Read standard output line-by-line asynchronously
-        while True:
-            line = await process.stdout.readline()
-            if not line:
-                break
+        print("[WebSocket Debate] Waiting for Swarm Semaphore...")
+        async with SWARM_SEMAPHORE:
+            print("[WebSocket Debate] Semaphore acquired. Starting process.")
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+                cwd=os.path.dirname(script_path),
+                env=env
+            )
+            
+            # Read standard output line-by-line asynchronously
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                    
+                line_str = line.decode('utf-8').strip()
+                if not line_str:
+                    continue
+                    
+                try:
+                    # Parse JSON output from swarm-engine
+                    data = json.loads(line_str)
+                    
+                    # Save completed messages to DB cache
+                    if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
+                        try:
+                            new_debate = AgentDebate(
+                                session_id=db_session_id,
+                                ticker=ticker,
+                                agent_name=data.get("agent_name", "Unknown"),
+                                avatar_code=data.get("avatar_code", "UNK"),
+                                message=data["message"]
+                            )
+                            db.add(new_debate)
+                            db.commit()
+                        except Exception as dbe:
+                            print(f"[WebSocket Debate DB Error] {dbe}")
+                            db.rollback()
+                            
+                    # Inject session_id parameter for frontend tracking
+                    data["session_id"] = session_id
+                    await websocket.send_json(data)
+                except json.JSONDecodeError:
+                    # Non-JSON logs (e.g. stdout prints or traceback errors)
+                    print(f"[WebSocket Debate Subprocess Log] {line_str}")
+                    
+            # Wait for subprocess completion
+            stderr_data = await process.stderr.read()
+            if stderr_data:
+                print(f"[WebSocket Debate Subprocess Stderr] {stderr_data.decode('utf-8')}")
                 
-            line_str = line.decode('utf-8').strip()
-            if not line_str:
-                continue
-                
+            await process.wait()
+            
+            # Save Prediction Cache
             try:
-                # Parse JSON output from swarm-engine
-                data = json.loads(line_str)
-                # Inject session_id parameter for frontend tracking
-                data["session_id"] = session_id
-                await websocket.send_json(data)
-            except json.JSONDecodeError:
-                # Non-JSON logs (e.g. stdout prints or traceback errors)
-                print(f"[WebSocket Debate Subprocess Log] {line_str}")
+                new_cache = PredictionCache(
+                    ticker=ticker,
+                    session_id=db_session_id,
+                    price_at_predict=price
+                )
+                db.add(new_cache)
+                db.commit()
+                print(f"[WebSocket Debate] Saved cache for {ticker} at price {price}")
+            except Exception as ce:
+                print(f"[WebSocket Debate Cache Error] {ce}")
+                db.rollback()
                 
-        # Wait for subprocess completion
-        stderr_data = await process.stderr.read()
-        if stderr_data:
-            print(f"[WebSocket Debate Subprocess Stderr] {stderr_data.decode('utf-8')}")
+            db.close()
             
-        await process.wait()
-        
-        # Keep connection alive
-        while True:
-            await websocket.receive_text()
-            await asyncio.sleep(1)
-            
+            # Keep connection alive
+            while True:
+                await websocket.receive_text()
+                await asyncio.sleep(1)
+                
     except WebSocketDisconnect:
         print(f"[WebSocket Debate] Agent session {session_id} disconnected")
     except Exception as e:
         print(f"[WebSocket Debate] Connection closed: {str(e)}")
+    finally:
+        db.close()
