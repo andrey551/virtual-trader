@@ -3,13 +3,7 @@
 import React, { useState } from "react";
 import { 
   Globe, 
-  HelpCircle,
-  TrendingUp,
-  TrendingDown,
-  ChevronRight,
-  Shield,
-  Activity,
-  ArrowRight
+  ChevronRight
 } from "lucide-react";
 import Link from "next/link";
 

@@ -11,7 +11,7 @@ export default function ScraperPlayground() {
   const [scrapedUrl, setScrapedUrl] = useState("https://finance.yahoo.com/quote/BTC-USD");
   const [scrapeSelectors, setScrapeSelectors] = useState(`{\n  "price": "span[data-regular-market-price]",\n  "change": "span[data-price-change]"\n}`);
   const [isScraping, setIsScraping] = useState(false);
-  const [scrapeResult, setScrapeResult] = useState<any>(null);
+  const [scrapeResult, setScrapeResult] = useState<unknown>(null);
 
   // Scraper Simulation Run
   const handleScrape = (e: React.FormEvent) => {
@@ -20,7 +20,7 @@ export default function ScraperPlayground() {
     setScrapeResult(null);
     setTimeout(() => {
       try {
-        const parsed = JSON.parse(scrapeSelectors);
+        JSON.parse(scrapeSelectors);
         setScrapeResult({
           status: "success",
           url: scrapedUrl,
@@ -31,11 +31,12 @@ export default function ScraperPlayground() {
           },
           timestamp: new Date().toISOString()
         });
-      } catch (err: any) {
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
         setScrapeResult({
           status: "error",
           url: scrapedUrl,
-          message: "Invalid selectors JSON schema: " + err.message,
+          message: "Invalid selectors JSON schema: " + errMsg,
           timestamp: new Date().toISOString()
         });
       }

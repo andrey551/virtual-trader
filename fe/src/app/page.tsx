@@ -6,8 +6,7 @@ import {
   TrendingUp, 
   TrendingDown, 
   Activity, 
-  Sparkles,
-  ArrowRight
+  Sparkles
 } from "lucide-react";
 
 // Mock Database of Assets
