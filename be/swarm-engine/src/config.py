@@ -1,10 +1,11 @@
 import os
 from dotenv import load_dotenv
 
-# Load env variables if present
-load_dotenv()
-
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Explicitly point to the unified be/.env file
+ENV_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", ".env"))
+load_dotenv(ENV_PATH)
+
 # Automatically target the virtual_trader.db in backend-core folder
 DEFAULT_DB_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", "backend-core", "virtual_trader.db")).replace("\\", "/")
 

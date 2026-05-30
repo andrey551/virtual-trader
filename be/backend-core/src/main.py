@@ -215,12 +215,18 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     
     print(f"[WebSocket Debate] Spawning swarm-engine CLI subprocess: {' '.join(cmd)}")
     
+    # Propagate GEMINI_API_KEY explicitly to child process environment
+    env = os.environ.copy()
+    if settings.GEMINI_API_KEY:
+        env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+    
     try:
         process = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            cwd=os.path.dirname(script_path)
+            cwd=os.path.dirname(script_path),
+            env=env
         )
         
         # Read standard output line-by-line asynchronously

@@ -1,5 +1,10 @@
+import os
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# Explicitly point to the unified be/.env file
+ENV_PATH = os.path.abspath(os.path.join(BASE_DIR, "..", ".env"))
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Virtual Trader Backend Core"
@@ -15,7 +20,7 @@ class Settings(BaseSettings):
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     
     class Config:
-        env_file = ".env"
+        env_file = ENV_PATH
         case_sensitive = True
 
 settings = Settings()

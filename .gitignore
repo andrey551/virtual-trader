@@ -42,3 +42,11 @@ Thumbs.db
 **/*.md
 !README.md
 !**/README.md
+
+# Environment variables & local DBs
+.env
+.env.*
+**/.env
+**/.env.*
+*.db
+**/*.db
