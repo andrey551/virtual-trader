@@ -25,41 +25,130 @@ interface ScraperLog {
 
 export default function Home() {
   const [logs, setLogs] = useState<ScraperLog[]>([
-    { timestamp: "13:14:02", source: "CRAWLER", message: "Yahoo Finance feed BTC-USD connected", status: "SUCCESS" },
-    { timestamp: "13:14:05", source: "SENTIMENT", message: "Scraped 240 global news headlines", status: "INFO" },
-    { timestamp: "13:14:08", source: "CONVERGENCE", message: "Swarm resolved BTC BUY verdict (85% conf)", status: "SYNC" },
-    { timestamp: "13:14:15", source: "CRAWLER", message: "Scraped central bank inflation reports", status: "SUCCESS" }
+    { timestamp: "13:14:02", source: "SYSTEM", message: "Connecting to swarm telemetry node...", status: "SUCCESS" }
   ]);
 
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Connect to live AI Agent debate stream
   useEffect(() => {
-    const actions = [
-      { source: "CRAWLER", message: "Fetching SEC 10-Q filing indexes...", status: "SUCCESS" as const },
-      { source: "SENTIMENT", message: "Scanning social sentiment indices...", status: "INFO" as const },
-      { source: "CONVERGENCE", message: "Consensus recalculating weights...", status: "SYNC" as const },
-      { source: "CRAWLER", message: "Order book bid/ask depth parsed...", status: "SUCCESS" as const },
-      { source: "SENTIMENT", message: "Oil supply pipeline disruption feeds ingested", status: "INFO" as const },
-      { source: "CONVERGENCE", message: "MACD momentum vectors synchronized", status: "SYNC" as const }
-    ];
-
-    const interval = setInterval(() => {
-      const randomAction = actions[Math.floor(Math.random() * actions.length)];
-      const now = new Date();
-      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-      
-      const newLog = {
-        timestamp: timeStr,
-        ...randomAction
-      };
-      
-      setLogs(prev => [newLog, ...prev.slice(0, 4)]);
-    }, 3500);
-
-    return () => clearInterval(interval);
+    const ws = new WebSocket("ws://localhost:8000/ws/swarm-debate/live");
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        
+        if (data.status === "TYPING") {
+          const newLog: ScraperLog = {
+            timestamp: timeStr,
+            source: data.avatar_code || data.agent_name,
+            message: "Thinking...",
+            status: "INFO"
+          };
+          setLogs(prev => [newLog, ...prev.slice(0, 8)]);
+        } else if (data.status === "SPEAKING") {
+          setLogs(prev => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            if (updated[0].source === (data.avatar_code || data.agent_name)) {
+              const currentMsg = updated[0].message === "Thinking..." ? "" : updated[0].message;
+              updated[0] = {
+                ...updated[0],
+                message: currentMsg + (data.message_chunk || "")
+              };
+            }
+            return updated;
+          });
+        } else if (data.status === "COMPLETED") {
+          setLogs(prev => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            if (updated[0].source === (data.avatar_code || data.agent_name)) {
+              updated[0] = {
+                ...updated[0],
+                message: data.message,
+                status: "SUCCESS"
+              };
+            }
+            return updated;
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    
+    return () => ws.close();
   }, []);
 
-  const filteredAssets = ASSETS_MOCK.filter(asset => 
+  const [assets, setAssets] = useState<any[]>(ASSETS_MOCK);
+  
+  useEffect(() => {
+    async function loadAssets() {
+      try {
+        const res = await fetch("http://localhost:8000/api/assets");
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((item: any) => {
+            let cat = item.category;
+            if (cat === "STOCKS") cat = "Stocks";
+            else if (cat === "CRYPTO") cat = "Crypto";
+            else if (cat === "FOREX") cat = "Forex";
+            else if (cat === "INDEX") cat = "Indices";
+            
+            const mockMatch = ASSETS_MOCK.find(m => m.symbol === item.ticker);
+            return {
+              id: String(item.id),
+              symbol: item.ticker,
+              name: item.name,
+              category: cat,
+              price: mockMatch ? mockMatch.price : 100.0,
+              changePercent: mockMatch ? mockMatch.changePercent : 0.0,
+              rating: item.system_verdict,
+              confidence: Number(item.confidence_level),
+              predictionAccuracy: Number(item.accuracy_score)
+            };
+          });
+          setAssets(mapped);
+        }
+      } catch (err) {
+        // Fallback silently to static mocks
+      }
+    }
+    loadAssets();
+  }, []);
+
+  // Establish price updates WebSocket
+  useEffect(() => {
+    const activeTickers = assets.map(a => a.symbol).join(",");
+    if (!activeTickers) return;
+    
+    const ws = new WebSocket(`ws://localhost:8000/ws/prices?tickers=${activeTickers}`);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "price_update") {
+          setAssets(prev => prev.map(asset => {
+            if (asset.symbol === data.ticker) {
+              return {
+                ...asset,
+                price: data.price,
+                changePercent: data.changePercent
+              };
+            }
+            return asset;
+          }));
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    return () => ws.close();
+  }, [assets.length]);
+
+  const filteredAssets = assets.filter(asset => 
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     asset.category.toLowerCase().includes(searchQuery.toLowerCase())

@@ -18,17 +18,73 @@ import {
 import { ASSETS_MOCK, EVENTS_MOCK } from "./data";
 import DynamicChart from "./DynamicChart";
 
+function generateExpandedCandles(basePrice: number, rating: string, category: string): any[] {
+  const isCrypto = category === "Crypto" || category === "CRYPTO";
+  const stepPercent = isCrypto ? 0.015 : 0.005;
+  const bias = rating.includes("BUY") ? 0.25 : (rating.includes("SELL") ? -0.25 : 0.0);
+  
+  let currentPrice = basePrice;
+  const generatedHist = [];
+  
+  for (let i = 0; i < 22; i++) {
+    const change = (Math.random() - 0.5 + bias) * stepPercent;
+    const prevClose = currentPrice / (1 + change);
+    const prevOpen = prevClose;
+    const nextHigh = Math.max(prevOpen, currentPrice) * (1 + Math.random() * 0.003);
+    const nextLow = Math.min(prevOpen, currentPrice) * (1 - Math.random() * 0.003);
+    
+    generatedHist.unshift({
+      time: `2026-05-${String(30 - i).padStart(2, '0')}`,
+      open: prevOpen,
+      high: nextHigh,
+      low: nextLow,
+      close: currentPrice,
+      volume: Math.round(50000 + Math.random() * 50000)
+    });
+    currentPrice = prevClose;
+  }
+  
+  let lastClose = basePrice;
+  const generatedFore = [];
+  for (let i = 1; i <= 8; i++) {
+    const change = (Math.random() - 0.5 + bias) * stepPercent;
+    const nextClose = lastClose * (1 + change);
+    const nextOpen = lastClose;
+    const nextHigh = Math.max(nextOpen, nextClose) * (1 + Math.random() * 0.003);
+    const nextLow = Math.min(nextOpen, nextClose) * (1 - Math.random() * 0.003);
+    
+    generatedFore.push({
+      time: `Forecast T+${i}`,
+      open: nextOpen,
+      high: nextHigh,
+      low: nextLow,
+      close: nextClose,
+      volume: 0,
+      isForecast: true
+    });
+    lastClose = nextClose;
+  }
+  
+  return [...generatedHist, ...generatedFore];
+}
+
 function AnalyticsContent() {
   const searchParams = useSearchParams();
   const symbolParam = searchParams.get("symbol") || "BTC-USD";
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [assetsList, setAssetsList] = useState<any[]>(ASSETS_MOCK);
+  
+  // Initialize with expanded candles
+  const initialDefault = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
+  const [selectedAsset, setSelectedAsset] = useState<any>({
+    ...initialDefault,
+    candles: generateExpandedCandles(initialDefault.price, initialDefault.rating, initialDefault.category)
+  });
 
-  const filteredAssets = ASSETS_MOCK.filter(asset => 
+  const filteredAssets = assetsList.filter(asset => 
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  const selectedAsset = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
   
   const [forecastOffset, setForecastOffset] = useState(0);
   const [liveStatus, setLiveStatus] = useState("SYS_ACTIVE");
@@ -51,6 +107,143 @@ function AnalyticsContent() {
     setLiveStatus("SYS_ACTIVE");
   }
 
+  // Load assets list on start
+  useEffect(() => {
+    async function loadAssets() {
+      try {
+        const res = await fetch("http://localhost:8000/api/assets");
+        if (res.ok) {
+          const data = await res.json();
+          const mapped = data.map((item: any) => {
+            let cat = item.category;
+            if (cat === "STOCKS") cat = "Stocks";
+            else if (cat === "CRYPTO") cat = "Crypto";
+            else if (cat === "FOREX") cat = "Forex";
+            else if (cat === "INDEX") cat = "Indices";
+            
+            const mockMatch = ASSETS_MOCK.find(m => m.symbol === item.ticker);
+            return {
+              id: String(item.id),
+              symbol: item.ticker,
+              name: item.name,
+              category: cat,
+              price: mockMatch ? mockMatch.price : 100.0,
+              changePercent: mockMatch ? mockMatch.changePercent : 0.0,
+              rating: item.system_verdict,
+              confidence: Number(item.confidence_level),
+              predictionAccuracy: Number(item.accuracy_score)
+            };
+          });
+          setAssetsList(mapped);
+        }
+      } catch (err) {
+        // fallback silently
+      }
+    }
+    loadAssets();
+  }, []);
+
+  // Load selected asset details and candles on symbolParam change
+  useEffect(() => {
+    async function loadAssetDetail() {
+      try {
+        const detailRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}`);
+        // Request 3 months of candles instead of 1 month
+        const candleRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}/candles?interval=1d&period=3mo`);
+        
+        if (detailRes.ok && candleRes.ok) {
+          const detail = await detailRes.json();
+          const candleData = await candleRes.json();
+          
+          const defaultAsset = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
+          
+          const rawCandles = candleData.candles.map((c: any) => ({
+            time: c.time.split("T")[0],
+            open: c.open,
+            high: c.high,
+            low: c.low,
+            close: c.close,
+            volume: c.volume
+          }));
+          
+          // Append 8 simulated forecast candles
+          const candles = [...rawCandles];
+          if (candles.length > 0) {
+            let lastClose = candles[candles.length - 1].close;
+            const isCrypto = detail.category === "CRYPTO";
+            const stepPercent = isCrypto ? 0.015 : 0.005;
+            
+            for (let i = 1; i <= 8; i++) {
+              const bias = detail.system_verdict.includes("BUY") ? 0.35 : (detail.system_verdict.includes("SELL") ? -0.35 : 0.0);
+              const change = (Math.random() - 0.5 + bias) * stepPercent;
+              const nextClose = lastClose * (1 + change);
+              const nextOpen = lastClose;
+              const nextHigh = Math.max(nextOpen, nextClose) * (1 + Math.random() * 0.004);
+              const nextLow = Math.min(nextOpen, nextClose) * (1 - Math.random() * 0.004);
+              
+              candles.push({
+                time: `Forecast T+${i}`,
+                open: nextOpen,
+                high: nextHigh,
+                low: nextLow,
+                close: nextClose,
+                volume: 0,
+                isForecast: true
+              });
+              lastClose = nextClose;
+            }
+          }
+          
+          const mappedAsset = {
+            ...defaultAsset,
+            id: String(detail.id),
+            symbol: detail.ticker,
+            name: detail.name,
+            category: detail.category === "STOCKS" ? "Stocks" : (detail.category === "CRYPTO" ? "Crypto" : (detail.category === "FOREX" ? "Forex" : "Indices")),
+            rating: detail.system_verdict,
+            confidence: Number(detail.confidence_level),
+            predictionAccuracy: Number(detail.accuracy_score),
+            candles: candles
+          };
+          setSelectedAsset(mappedAsset);
+        }
+      } catch (err) {
+        const localMock = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
+        const expandedCandles = generateExpandedCandles(localMock.price, localMock.rating, localMock.category);
+        setSelectedAsset({
+          ...localMock,
+          candles: expandedCandles
+        });
+      }
+    }
+    loadAssetDetail();
+  }, [symbolParam]);
+
+  // WebSocket Live Price wiggler for the selected asset
+  useEffect(() => {
+    const ws = new WebSocket(`ws://localhost:8000/ws/prices?tickers=${symbolParam}`);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === "price_update" && data.ticker === symbolParam) {
+          setSelectedAsset((prev: any) => {
+            if (prev && prev.symbol === symbolParam) {
+              return {
+                ...prev,
+                price: data.price,
+                changePercent: data.changePercent
+              };
+            }
+            return prev;
+          });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    return () => ws.close();
+  }, [symbolParam]);
+
   // Optimization simulation loop
   useEffect(() => {
     const interval = setInterval(() => {
@@ -63,7 +256,7 @@ function AnalyticsContent() {
     }, 4500);
 
     return () => clearInterval(interval);
-  }, [selectedAsset]);
+  }, [selectedAsset.symbol, selectedAsset.price]);
 
   const relatedEvents = EVENTS_MOCK.filter(ev => ev.tickers.includes(selectedAsset.symbol));
 
@@ -217,7 +410,7 @@ function AnalyticsContent() {
                 </h3>
                 
                 <div className="space-y-2">
-                  {displayedTechnicals.map((reason, idx) => {
+                  {displayedTechnicals.map((reason: any, idx: number) => {
                     const isExpanded = expandedReasonIndex === idx;
                     return (
                       <div 
@@ -288,7 +481,7 @@ function AnalyticsContent() {
               Fundamental & Macro Factor Audit
             </h3>
             <ul className="space-y-3">
-              {selectedAsset.fundamentalReasons.map((reason, idx) => (
+              {selectedAsset.fundamentalReasons.map((reason: any, idx: number) => (
                 <li key={idx} className="flex gap-3 text-xs text-zinc-600 leading-relaxed items-start">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0 mt-1.5"></span>
                   <span>{reason}</span>

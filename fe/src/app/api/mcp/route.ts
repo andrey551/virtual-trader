@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { spawn } from "child_process";
 import path from "path";
 
-export async function POST(request: Request): Promise<Response> {
+export async function POST(request: Request): Promise<NextResponse> {
   try {
     const body = await request.json();
     const { tool, arguments: toolArgs } = body;
@@ -16,7 +16,7 @@ export async function POST(request: Request): Promise<Response> {
     const scriptPath = path.join(backendDir, "test_mcp_tools.py");
     const argsString = JSON.stringify(toolArgs || {});
     
-    return new Promise<Response>((resolve) => {
+    return new Promise<NextResponse>((resolve) => {
       // Spawn Python process safely without shell expansion
       const pythonProcess = spawn("python", [scriptPath, "--tool", tool, "--args", argsString], {
         cwd: backendDir

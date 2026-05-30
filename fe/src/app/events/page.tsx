@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Globe, 
   ChevronRight
@@ -56,7 +56,87 @@ const EVENTS_MOCK: GlobalEvent[] = [
 ];
 
 export default function EventsPage() {
+  const [events, setEvents] = useState<GlobalEvent[]>(EVENTS_MOCK);
   const [selectedEvent, setSelectedEvent] = useState<GlobalEvent>(EVENTS_MOCK[0]);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      try {
+        const res = await fetch("http://localhost:8000/api/events");
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data) && data.length > 0) {
+            const mapped = data.map((ev: any): GlobalEvent => {
+              const absSentiment = Math.abs(Number(ev.sentiment_score || 0));
+              let severity: 'high' | 'medium' | 'low' = 'low';
+              if (absSentiment >= 0.6) {
+                severity = 'high';
+              } else if (absSentiment >= 0.3) {
+                severity = 'medium';
+              }
+
+              const titleLower = ev.title.toLowerCase();
+              let category = "Global News";
+              if (titleLower.includes("fed") || titleLower.includes("interest rate") || titleLower.includes("inflation") || titleLower.includes("macro")) {
+                category = "Macroeconomics";
+              } else if (titleLower.includes("opec") || titleLower.includes("oil") || titleLower.includes("spill") || titleLower.includes("gas") || titleLower.includes("crude")) {
+                category = "Energy & Geopolitical";
+              } else if (titleLower.includes("ai") || titleLower.includes("chip") || titleLower.includes("tech") || titleLower.includes("regulation")) {
+                category = "Regulations & Tech";
+              }
+
+              const impactedAssets = (ev.impacts || []).map((imp: any) => {
+                const ticker = imp.asset_ticker;
+                const factor = Number(imp.estimated_impact_factor || 0);
+                const impactVal = Math.round(factor * 10 * 10) / 10;
+                
+                let reason = `Estimated ${imp.impact_direction.toLowerCase()} movement of ${impactVal}% based on AI correlation analysis.`;
+                if (ticker === "USO" || ticker === "CL=F") {
+                  if (imp.impact_direction === "POSITIVE") {
+                    reason = "OPEC crude supply reductions increase energy commodity valuation and price pressure.";
+                  } else {
+                    reason = "Accidents or spill disruptions cause operational friction and temporary output decline.";
+                  }
+                } else if (ticker === "^GSPC" || ticker === "TLT") {
+                  if (imp.impact_direction === "POSITIVE") {
+                    reason = "Expected interest rate cuts improve market liquidity, driving corporate valuations higher.";
+                  } else {
+                    reason = "Macroeconomic tightening or higher inflation drags treasury and index benchmarks.";
+                  }
+                } else if (ticker === "NVDA" || ticker === "BTC-USD") {
+                  if (imp.impact_direction === "POSITIVE") {
+                    reason = "Expansion of server farm facilities and capital expenditures fuels high-performance growth.";
+                  } else {
+                    reason = "Strict regulatory guidelines and safety policies cause overhead compliance friction.";
+                  }
+                }
+                
+                return {
+                  symbol: ticker,
+                  impact: impactVal,
+                  reason: reason
+                };
+              });
+
+              return {
+                id: String(ev.id),
+                title: ev.title,
+                description: ev.summary || "",
+                severity,
+                category,
+                impactedAssets
+              };
+            });
+            setEvents(mapped);
+            setSelectedEvent(mapped[0]);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch events, using fallback mock data", err);
+      }
+    }
+    fetchEvents();
+  }, []);
 
   return (
     <div className="p-8 space-y-8 animate-fadeIn">
@@ -78,7 +158,7 @@ export default function EventsPage() {
           <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-widest">Active Global Events</h3>
           
           <div className="space-y-4">
-            {EVENTS_MOCK.map((ev) => (
+            {events.map((ev) => (
               <div
                 key={ev.id}
                 onClick={() => setSelectedEvent(ev)}
