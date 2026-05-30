@@ -55,6 +55,20 @@ const EVENTS_MOCK: GlobalEvent[] = [
   }
 ];
 
+interface ApiEventImpact {
+  asset_ticker: string;
+  impact_direction: string;
+  estimated_impact_factor: string | number;
+}
+
+interface ApiEvent {
+  id: number;
+  title: string;
+  summary?: string;
+  sentiment_score: string | number;
+  impacts?: ApiEventImpact[];
+}
+
 export default function EventsPage() {
   const [events, setEvents] = useState<GlobalEvent[]>(EVENTS_MOCK);
   const [selectedEvent, setSelectedEvent] = useState<GlobalEvent>(EVENTS_MOCK[0]);
@@ -66,7 +80,7 @@ export default function EventsPage() {
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
-            const mapped = data.map((ev: any): GlobalEvent => {
+            const mapped = data.map((ev: ApiEvent): GlobalEvent => {
               const absSentiment = Math.abs(Number(ev.sentiment_score || 0));
               let severity: 'high' | 'medium' | 'low' = 'low';
               if (absSentiment >= 0.6) {
@@ -85,7 +99,7 @@ export default function EventsPage() {
                 category = "Regulations & Tech";
               }
 
-              const impactedAssets = (ev.impacts || []).map((imp: any) => {
+              const impactedAssets = (ev.impacts || []).map((imp: ApiEventImpact) => {
                 const ticker = imp.asset_ticker;
                 const factor = Number(imp.estimated_impact_factor || 0);
                 const impactVal = Math.round(factor * 10 * 10) / 10;

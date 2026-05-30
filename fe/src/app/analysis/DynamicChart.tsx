@@ -1,8 +1,16 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Asset } from "./types";
 
 interface DynamicChartProps {
-  selectedAsset: Asset;
+  selectedAsset: {
+    symbol: string;
+    candles?: {
+      open: number;
+      high: number;
+      low: number;
+      close: number;
+      isForecast?: boolean;
+    }[];
+  };
   forecastOffset: number;
 }
 

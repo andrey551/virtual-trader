@@ -75,7 +75,7 @@ export default function Home() {
             return updated;
           });
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };
@@ -83,7 +83,29 @@ export default function Home() {
     return () => ws.close();
   }, []);
 
-  const [assets, setAssets] = useState<any[]>(ASSETS_MOCK);
+  interface DashboardAsset {
+    id: string;
+    symbol: string;
+    name: string;
+    category: string;
+    price: number;
+    changePercent: number;
+    rating: string;
+    confidence: number;
+    predictionAccuracy: number;
+  }
+
+  interface ApiAsset {
+    id: number;
+    ticker: string;
+    name: string;
+    category: string;
+    system_verdict: string;
+    confidence_level: string | number;
+    accuracy_score: string | number;
+  }
+
+  const [assets, setAssets] = useState<DashboardAsset[]>(ASSETS_MOCK as unknown as DashboardAsset[]);
   
   useEffect(() => {
     async function loadAssets() {
@@ -91,7 +113,7 @@ export default function Home() {
         const res = await fetch("http://localhost:8000/api/assets");
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((item: any) => {
+          const mapped = data.map((item: ApiAsset) => {
             let cat = item.category;
             if (cat === "STOCKS") cat = "Stocks";
             else if (cat === "CRYPTO") cat = "Crypto";
@@ -113,16 +135,17 @@ export default function Home() {
           });
           setAssets(mapped);
         }
-      } catch (err) {
+      } catch {
         // Fallback silently to static mocks
       }
     }
     loadAssets();
   }, []);
 
+  const activeTickers = assets.map(a => a.symbol).join(",");
+
   // Establish price updates WebSocket
   useEffect(() => {
-    const activeTickers = assets.map(a => a.symbol).join(",");
     if (!activeTickers) return;
     
     const ws = new WebSocket(`ws://localhost:8000/ws/prices?tickers=${activeTickers}`);
@@ -141,12 +164,12 @@ export default function Home() {
             return asset;
           }));
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };
     return () => ws.close();
-  }, [assets.length]);
+  }, [activeTickers]);
 
   const filteredAssets = assets.filter(asset => 
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase()) ||

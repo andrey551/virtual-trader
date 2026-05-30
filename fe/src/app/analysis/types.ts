@@ -14,7 +14,7 @@ export interface TechnicalReason {
 export interface Asset {
   id: string;
   name: string;
-  category: 'Crypto' | 'Stock' | 'Forex' | 'Commodity';
+  category: string;
   symbol: string;
   price: number;
   change: number;

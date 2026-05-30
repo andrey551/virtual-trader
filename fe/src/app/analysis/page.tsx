@@ -18,7 +18,38 @@ import {
 import { ASSETS_MOCK, EVENTS_MOCK } from "./data";
 import DynamicChart from "./DynamicChart";
 
-function generateExpandedCandles(basePrice: number, rating: string, category: string): any[] {
+interface ChartCandle {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  isForecast?: boolean;
+}
+
+interface AnalyticsAsset {
+  id: string;
+  name: string;
+  category: string;
+  symbol: string;
+  price: number;
+  change: number;
+  changePercent: number;
+  marketCap: string;
+  volume24h: string;
+  rsi: number;
+  macd: string;
+  peRatio?: string;
+  rating: string;
+  confidence: number;
+  candles: ChartCandle[];
+  technicalReasons: { summary: string; detail: string }[];
+  fundamentalReasons: string[];
+  predictionAccuracy?: number;
+}
+
+function generateExpandedCandles(basePrice: number, rating: string, category: string): ChartCandle[] {
   const isCrypto = category === "Crypto" || category === "CRYPTO";
   const stepPercent = isCrypto ? 0.015 : 0.005;
   const bias = rating.includes("BUY") ? 0.25 : (rating.includes("SELL") ? -0.25 : 0.0);
@@ -73,14 +104,14 @@ function AnalyticsContent() {
   const symbolParam = searchParams.get("symbol") || "BTC-USD";
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [assetsList, setAssetsList] = useState<any[]>(ASSETS_MOCK);
+  const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>(ASSETS_MOCK as unknown as AnalyticsAsset[]);
   
   // Initialize with expanded candles
   const initialDefault = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
-  const [selectedAsset, setSelectedAsset] = useState<any>({
+  const [selectedAsset, setSelectedAsset] = useState<AnalyticsAsset>({
     ...initialDefault,
     candles: generateExpandedCandles(initialDefault.price, initialDefault.rating, initialDefault.category)
-  });
+  } as unknown as AnalyticsAsset);
 
   const filteredAssets = assetsList.filter(asset => 
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase())
@@ -107,6 +138,16 @@ function AnalyticsContent() {
     setLiveStatus("SYS_ACTIVE");
   }
 
+  interface ApiAssetSummary {
+    id: number;
+    ticker: string;
+    name: string;
+    category: string;
+    system_verdict: string;
+    confidence_level: string | number;
+    accuracy_score: string | number;
+  }
+
   // Load assets list on start
   useEffect(() => {
     async function loadAssets() {
@@ -114,7 +155,7 @@ function AnalyticsContent() {
         const res = await fetch("http://localhost:8000/api/assets");
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((item: any) => {
+          const mapped = data.map((item: ApiAssetSummary) => {
             let cat = item.category;
             if (cat === "STOCKS") cat = "Stocks";
             else if (cat === "CRYPTO") cat = "Crypto";
@@ -136,7 +177,7 @@ function AnalyticsContent() {
           });
           setAssetsList(mapped);
         }
-      } catch (err) {
+      } catch {
         // fallback silently
       }
     }
@@ -155,9 +196,18 @@ function AnalyticsContent() {
           const detail = await detailRes.json();
           const candleData = await candleRes.json();
           
+          interface ApiCandle {
+            time: string;
+            open: number;
+            high: number;
+            low: number;
+            close: number;
+            volume: number;
+          }
+
           const defaultAsset = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
           
-          const rawCandles = candleData.candles.map((c: any) => ({
+          const rawCandles = candleData.candles.map((c: ApiCandle) => ({
             time: c.time.split("T")[0],
             open: c.open,
             high: c.high,
@@ -205,15 +255,15 @@ function AnalyticsContent() {
             predictionAccuracy: Number(detail.accuracy_score),
             candles: candles
           };
-          setSelectedAsset(mappedAsset);
+          setSelectedAsset(mappedAsset as unknown as AnalyticsAsset);
         }
-      } catch (err) {
+      } catch {
         const localMock = ASSETS_MOCK.find(a => a.symbol === symbolParam) || ASSETS_MOCK[0];
         const expandedCandles = generateExpandedCandles(localMock.price, localMock.rating, localMock.category);
         setSelectedAsset({
           ...localMock,
           candles: expandedCandles
-        });
+        } as unknown as AnalyticsAsset);
       }
     }
     loadAssetDetail();
@@ -226,7 +276,7 @@ function AnalyticsContent() {
       try {
         const data = JSON.parse(event.data);
         if (data.type === "price_update" && data.ticker === symbolParam) {
-          setSelectedAsset((prev: any) => {
+          setSelectedAsset((prev: AnalyticsAsset) => {
             if (prev && prev.symbol === symbolParam) {
               return {
                 ...prev,
@@ -237,7 +287,7 @@ function AnalyticsContent() {
             return prev;
           });
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
     };
@@ -410,7 +460,7 @@ function AnalyticsContent() {
                 </h3>
                 
                 <div className="space-y-2">
-                  {displayedTechnicals.map((reason: any, idx: number) => {
+                  {displayedTechnicals.map((reason: { summary: string; detail: string }, idx: number) => {
                     const isExpanded = expandedReasonIndex === idx;
                     return (
                       <div 
@@ -481,7 +531,7 @@ function AnalyticsContent() {
               Fundamental & Macro Factor Audit
             </h3>
             <ul className="space-y-3">
-              {selectedAsset.fundamentalReasons.map((reason: any, idx: number) => (
+              {selectedAsset.fundamentalReasons.map((reason: string, idx: number) => (
                 <li key={idx} className="flex gap-3 text-xs text-zinc-600 leading-relaxed items-start">
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0 mt-1.5"></span>
                   <span>{reason}</span>
