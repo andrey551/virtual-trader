@@ -15,6 +15,7 @@ import {
   Search
 } from "lucide-react";
 import { ASSETS_MOCK } from "./analysis/data";
+import { BACKEND_URL, WS_URL } from "../config";
 
 interface ScraperLog {
   timestamp: string;
@@ -32,7 +33,7 @@ export default function Home() {
 
   // Connect to live AI Agent debate stream
   useEffect(() => {
-    const ws = new WebSocket("ws://localhost:8000/ws/swarm-debate/live");
+    const ws = new WebSocket(`${WS_URL}/ws/swarm-debate/live`);
     
     ws.onmessage = (event) => {
       try {
@@ -110,7 +111,7 @@ export default function Home() {
   useEffect(() => {
     async function loadAssets() {
       try {
-        const res = await fetch("http://localhost:8000/api/assets");
+        const res = await fetch(`${BACKEND_URL}/api/assets`);
         if (res.ok) {
           const data = await res.json();
           const mapped = data.map((item: ApiAsset) => {
@@ -148,7 +149,7 @@ export default function Home() {
   useEffect(() => {
     if (!activeTickers) return;
     
-    const ws = new WebSocket(`ws://localhost:8000/ws/prices?tickers=${activeTickers}`);
+    const ws = new WebSocket(`${WS_URL}/ws/prices?tickers=${activeTickers}`);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

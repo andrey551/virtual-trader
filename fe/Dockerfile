@@ -10,6 +10,12 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Khai báo build arguments để Next.js đưa vào client bundle khi compile
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WS_URL
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
+
 # Tắt Next.js telemetry để tăng tốc độ build và bảo mật
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

@@ -9,6 +9,16 @@ from src.services.mcp_client import mcp_client
 from src.workers.news_scheduler import start_scheduler, shutdown_scheduler
 
 # Auto-create tables on startup (excellent out-of-the-box SQLite/PostgreSQL development)
+if not settings.DATABASE_URL.startswith("sqlite"):
+    from sqlalchemy import text
+    try:
+        print("[Database] Ensuring pgvector extension is enabled in PostgreSQL...")
+        with engine.connect() as conn:
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+            conn.commit()
+    except Exception as e:
+        print(f"[Database] Warning: Failed to create pgvector extension: {e}")
+
 Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager

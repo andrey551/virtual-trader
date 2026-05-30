@@ -17,6 +17,7 @@ import {
 
 import { ASSETS_MOCK, EVENTS_MOCK } from "./data";
 import DynamicChart from "./DynamicChart";
+import { BACKEND_URL, WS_URL } from "../../config";
 
 interface ChartCandle {
   time: string;
@@ -156,7 +157,7 @@ function AnalyticsContent() {
   useEffect(() => {
     async function loadAssets() {
       try {
-        const res = await fetch("http://localhost:8000/api/assets");
+        const res = await fetch(`${BACKEND_URL}/api/assets`);
         if (res.ok) {
           const data = await res.json();
           const mapped = data.map((item: ApiAssetSummary) => {
@@ -192,8 +193,8 @@ function AnalyticsContent() {
   useEffect(() => {
     async function loadAssetDetail() {
       try {
-        const detailRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}`);
-        const candleRes = await fetch(`http://localhost:8000/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
+        const detailRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}`);
+        const candleRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
         
         if (detailRes.ok && candleRes.ok) {
           const detail = await detailRes.json();
@@ -274,7 +275,7 @@ function AnalyticsContent() {
 
   // WebSocket Live Price wiggler for the selected asset
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:8000/ws/prices?tickers=${symbolParam}`);
+    const ws = new WebSocket(`${WS_URL}/ws/prices?tickers=${symbolParam}`);
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);

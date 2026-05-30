@@ -3,23 +3,34 @@ import os
 import json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from src.config import settings
 
 class MCPClientService:
     def __init__(self):
-        # Resolve path to the sibling mcp-data-crawler project directory
-        services_dir = os.path.dirname(os.path.abspath(__file__))
-        src_dir = os.path.dirname(services_dir)
-        backend_core_dir = os.path.dirname(src_dir)
-        be_dir = os.path.dirname(backend_core_dir)
-        crawler_dir = os.path.join(be_dir, "mcp-data-crawler")
-        server_path = os.path.join(crawler_dir, "server.py")
-        
-        # Spawn the Python server as an stdio child process
-        self.server_params = StdioServerParameters(
-            command=sys.executable,
-            args=[server_path],
-            env=os.environ.copy()
-        )
+        if getattr(settings, "MCP_USE_DOCKER", False):
+            # Spawn Playwright MCP crawler dynamically via Docker CLI using host daemon
+            print("[MCP Client] Configuring to run Playwright MCP crawler in container via Docker CLI...")
+            self.server_params = StdioServerParameters(
+                command="docker",
+                args=["run", "-i", "--rm", "--ipc=host", "mcp-data-crawler"],
+                env=os.environ.copy()
+            )
+        else:
+            # Resolve path to the sibling mcp-data-crawler project directory
+            services_dir = os.path.dirname(os.path.abspath(__file__))
+            src_dir = os.path.dirname(services_dir)
+            backend_core_dir = os.path.dirname(src_dir)
+            be_dir = os.path.dirname(backend_core_dir)
+            crawler_dir = os.path.join(be_dir, "mcp-data-crawler")
+            server_path = os.path.join(crawler_dir, "server.py")
+            
+            print(f"[MCP Client] Configuring to run local Python MCP crawler: {server_path}")
+            # Spawn the Python server as an stdio child process
+            self.server_params = StdioServerParameters(
+                command=sys.executable,
+                args=[server_path],
+                env=os.environ.copy()
+            )
         self.session = None
         self._exit_stack = None
 

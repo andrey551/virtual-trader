@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # CORS Origins allowed to hit the API
     BACKEND_CORS_ORIGINS: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     
+    # Use Docker to run Playwright MCP crawler in container environment
+    MCP_USE_DOCKER: bool = False
+    
     class Config:
         env_file = ENV_PATH
         case_sensitive = True

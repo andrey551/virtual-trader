@@ -6,6 +6,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import Link from "next/link";
+import { BACKEND_URL } from "../../config";
 
 interface GlobalEvent {
   id: string;
@@ -76,7 +77,7 @@ export default function EventsPage() {
   useEffect(() => {
     async function fetchEvents() {
       try {
-        const res = await fetch("http://localhost:8000/api/events");
+        const res = await fetch(`${BACKEND_URL}/api/events`);
         if (res.ok) {
           const data = await res.json();
           if (Array.isArray(data) && data.length > 0) {
