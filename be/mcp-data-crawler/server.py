@@ -8,7 +8,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from mcp.server.models import InitializationOptions
-from mcp.server import Notification, Server
+from mcp.server import NotificationOptions, Server
 import mcp.types as types
 from mcp.server.stdio import stdio_server
 
@@ -190,7 +190,7 @@ async def main():
                 server_name="virtual-trader-mcp",
                 server_version="2.0.0",
                 capabilities=server.get_capabilities(
-                    notification_options=Notification.options(),
+                    notification_options=NotificationOptions(),
                     experimental_capabilities={},
                 ),
             ),
