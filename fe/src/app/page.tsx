@@ -104,6 +104,9 @@ export default function Home() {
     system_verdict: string;
     confidence_level: string | number;
     accuracy_score: string | number;
+    price?: number;
+    changePercent?: number;
+    alpha_outperformance?: string | number;
   }
 
   const [assets, setAssets] = useState<DashboardAsset[]>([]);

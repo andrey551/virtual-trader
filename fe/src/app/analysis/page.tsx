@@ -49,56 +49,6 @@ interface AnalyticsAsset {
   predictionAccuracy?: number;
 }
 
-function generateExpandedCandles(basePrice: number, rating: string, category: string): ChartCandle[] {
-  const isCrypto = category === "Crypto" || category === "CRYPTO";
-  const stepPercent = isCrypto ? 0.015 : 0.005;
-  const bias = rating.includes("BUY") ? 0.25 : (rating.includes("SELL") ? -0.25 : 0.0);
-  
-  let currentPrice = basePrice;
-  const generatedHist = [];
-  
-  for (let i = 0; i < 22; i++) {
-    const change = (Math.random() - 0.5 + bias) * stepPercent;
-    const prevClose = currentPrice / (1 + change);
-    const prevOpen = prevClose;
-    const nextHigh = Math.max(prevOpen, currentPrice) * (1 + Math.random() * 0.003);
-    const nextLow = Math.min(prevOpen, currentPrice) * (1 - Math.random() * 0.003);
-    
-    generatedHist.unshift({
-      time: `2026-05-${String(30 - i).padStart(2, '0')}`,
-      open: prevOpen,
-      high: nextHigh,
-      low: nextLow,
-      close: currentPrice,
-      volume: Math.round(50000 + Math.random() * 50000)
-    });
-    currentPrice = prevClose;
-  }
-  
-  let lastClose = basePrice;
-  const generatedFore = [];
-  for (let i = 1; i <= 8; i++) {
-    const change = (Math.random() - 0.5 + bias) * stepPercent;
-    const nextClose = lastClose * (1 + change);
-    const nextOpen = lastClose;
-    const nextHigh = Math.max(nextOpen, nextClose) * (1 + Math.random() * 0.003);
-    const nextLow = Math.min(nextOpen, nextClose) * (1 - Math.random() * 0.003);
-    
-    generatedFore.push({
-      time: `Forecast T+${i}`,
-      open: nextOpen,
-      high: nextHigh,
-      low: nextLow,
-      close: nextClose,
-      volume: 0,
-      isForecast: true
-    });
-    lastClose = nextClose;
-  }
-  
-  return [...generatedHist, ...generatedFore];
-}
-
 function AnalyticsContent() {
   const searchParams = useSearchParams();
   const symbolParam = searchParams.get("symbol") || "BTC-USD";
@@ -163,6 +113,8 @@ function AnalyticsContent() {
     system_verdict: string;
     confidence_level: string | number;
     accuracy_score: string | number;
+    price?: number;
+    changePercent?: number;
   }
 
   // Load assets list on start
@@ -172,7 +124,7 @@ function AnalyticsContent() {
         const res = await fetch(`${BACKEND_URL}/api/assets`);
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((item: any) => {
+          const mapped = data.map((item: ApiAssetSummary) => {
             let cat = item.category;
             if (cat === "STOCKS") cat = "Stocks";
             else if (cat === "CRYPTO") cat = "Crypto";
@@ -340,7 +292,13 @@ function AnalyticsContent() {
         const res = await fetch(`${BACKEND_URL}/api/events/search-similar?query_text=${symbolParam}&limit=5`);
         if (res.ok) {
           const data = await res.json();
-          const mapped = data.map((ev: any) => {
+          interface ApiNewsEvent {
+            id: number;
+            title: string;
+            summary?: string;
+            sentiment_score: string | number;
+          }
+          const mapped = data.map((ev: ApiNewsEvent) => {
             const score = Math.abs(Number(ev.sentiment_score || 0));
             let severity: "high" | "medium" | "low" = "low";
             if (score >= 0.6) severity = "high";
