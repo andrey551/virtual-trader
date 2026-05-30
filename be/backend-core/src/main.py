@@ -160,67 +160,97 @@ async def websocket_prices_endpoint(websocket: WebSocket):
 # -------------------------------------------------------------
 @app.websocket("/ws/swarm-debate/{session_id}")
 async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
+    import sys
+    import os
+    import json
+    from src.database import SessionLocal
+    from src.models.asset import Asset
+
     await websocket.accept()
     print(f"[WebSocket Debate] Agent session {session_id} connected")
     
-    # Mock debate messages representing the 10 agents arguing about market outlook
-    mock_debate_messages = [
-        {"agent": "Technical Node Agent", "avatar": "TECH_01", "msg": "Chỉ báo RSI đang rơi vào vùng quá bán (oversold) ngắn hạn. Mức hỗ trợ mạnh đang được duy trì vững vàng."},
-        {"agent": "Fundamental Ledger Agent", "avatar": "FUND_02", "msg": "Tốc độ giảm nhiệt lạm phát lõi trong báo cáo CPI vừa qua là một bệ đỡ cơ bản vững chắc cho định giá tài sản."},
-        {"agent": "Macro Risk Arbiter", "avatar": "MACR_03", "msg": "Nhưng hãy cẩn thận, sản lượng dầu cắt giảm từ OPEC có thể thổi bùng lại áp lực lạm phát chuỗi cung ứng."},
-        {"agent": "Sentiment Indexer Agent", "avatar": "SENT_04", "msg": "Tâm lý tin tức vĩ mô (Sentiment score) đang dịch chuyển tích cực từ -0.2 lên +0.45 trong 24 giờ qua."},
-        {"agent": "Volume Liquidity Node", "avatar": "VOLU_05", "msg": "Đồng ý. Volume mua chủ động ở vùng giá này tăng vọt 35%, cho thấy dòng tiền thông minh đang gom hàng."},
-        {"agent": "Order Book Arbiter", "avatar": "BOOK_06", "msg": "Sổ lệnh Binance ghi nhận tường mua (buy walls) lớn ở mức giá ngay phía dưới. Lực bán đang cạn kiệt."},
-        {"agent": "Volatility Estimator", "avatar": "VOLA_07", "msg": "Chỉ số biến động Bollinger Bands đang co thắt cực độ. Sắp có một cú bứt phá mạnh (breakout) xảy ra."},
-        {"agent": "Correlated Flow Agent", "avatar": "FLOW_08", "msg": "Các tài sản tương quan chéo (như DXY và Lợi suất trái phiếu) đang giảm, tạo điều kiện thuận lợi cho đà phục hồi."},
-        {"agent": "System Risk Auditor", "avatar": "RISK_09", "msg": "Tỷ lệ đòn bẩy ký quỹ đã giảm bớt, làm giảm rủi ro xảy ra các cú sập thanh lý hàng loạt (long squeeze)."},
-        {"agent": "Consensus Leader Node", "avatar": "CONS_10", "msg": "Tổng hợp ý kiến từ 9 nodes, tỷ lệ đồng thuận tăng lên 88.5%. Tôi đề xuất xếp hạng Verdict là BUY với điểm số 85.0."}
+    # Default parameters
+    ticker = "BTC-USD"
+    category = "CRYPTO"
+    price = 67250.45
+    
+    # Try resolving asset from ticker if session_id is a ticker
+    if session_id != "live" and "-" in session_id:
+        ticker = session_id.upper()
+        
+    db = SessionLocal()
+    try:
+        asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
+        if asset:
+            category = asset.category
+            # Default mock prices based on ticker
+            mock_match = {
+                "BTC-USD": 67250.45,
+                "ETH-USD": 3450.80,
+                "SOL-USD": 168.20,
+                "AAPL": 189.84,
+                "TSLA": 178.46,
+                "NVDA": 948.22,
+                "EURUSD=X": 1.0850,
+                "GBPUSD=X": 1.2720,
+                "^GSPC": 5277.51
+            }
+            price = mock_match.get(asset.ticker, 100.0)
+    except Exception as e:
+        print(f"[WebSocket Debate] DB lookup failed: {e}")
+    finally:
+        db.close()
+        
+    # Build absolute path to swarm-engine main.py CLI
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
+    
+    cmd = [
+        sys.executable,
+        script_path,
+        "--ticker", ticker,
+        "--category", category,
+        "--price", str(price)
     ]
     
+    print(f"[WebSocket Debate] Spawning swarm-engine CLI subprocess: {' '.join(cmd)}")
+    
     try:
-        # Loop to stream agent messages step by step
-        for item in mock_debate_messages:
-            agent = item["agent"]
-            avatar = item["avatar"]
-            full_msg = item["msg"]
-            
-            # Send initial message header signaling agent is writing
-            await websocket.send_json({
-                "session_id": session_id,
-                "agent_name": agent,
-                "avatar_code": avatar,
-                "message": "",
-                "status": "TYPING"
-            })
-            await asyncio.sleep(0.5)
-            
-            # Stream the message text in chunks (simulating real-time typewriter thinking)
-            chunk_size = 4
-            for i in range(0, len(full_msg), chunk_size):
-                chunk = full_msg[i:i+chunk_size]
-                await websocket.send_json({
-                    "session_id": session_id,
-                    "agent_name": agent,
-                    "avatar_code": avatar,
-                    "message_chunk": chunk,
-                    "status": "SPEAKING"
-                })
-                # Simulate typewriter latency
-                await asyncio.sleep(0.1)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=os.path.dirname(script_path)
+        )
+        
+        # Read standard output line-by-line asynchronously
+        while True:
+            line = await process.stdout.readline()
+            if not line:
+                break
                 
-            # Signal message completed
-            await websocket.send_json({
-                "session_id": session_id,
-                "agent_name": agent,
-                "avatar_code": avatar,
-                "message": full_msg,
-                "status": "COMPLETED"
-            })
+            line_str = line.decode('utf-8').strip()
+            if not line_str:
+                continue
+                
+            try:
+                # Parse JSON output from swarm-engine
+                data = json.loads(line_str)
+                # Inject session_id parameter for frontend tracking
+                data["session_id"] = session_id
+                await websocket.send_json(data)
+            except json.JSONDecodeError:
+                # Non-JSON logs (e.g. stdout prints or traceback errors)
+                print(f"[WebSocket Debate Subprocess Log] {line_str}")
+                
+        # Wait for subprocess completion
+        stderr_data = await process.stderr.read()
+        if stderr_data:
+            print(f"[WebSocket Debate Subprocess Stderr] {stderr_data.decode('utf-8')}")
             
-            # Brief pause before next agent speaks
-            await asyncio.sleep(2.5)
-            
-        # Hold connection open
+        await process.wait()
+        
+        # Keep connection alive
         while True:
             await websocket.receive_text()
             await asyncio.sleep(1)
@@ -228,4 +258,4 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         print(f"[WebSocket Debate] Agent session {session_id} disconnected")
     except Exception as e:
-        print(f"[WebSocket Debate] Error: {str(e)}")
+        print(f"[WebSocket Debate] Connection closed: {str(e)}")
