@@ -524,7 +524,7 @@ export default function ScraperPlayground() {
           </div>
 
           {/* Quick telemetry diagnostic details */}
-          {responseLog && (responseLog as Record<string, unknown>).status === "error" && (
+          {!!responseLog && (responseLog as Record<string, unknown>).status === "error" && (
             <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-100 flex items-start gap-2 animate-fadeIn">
               <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="space-y-0.5">
