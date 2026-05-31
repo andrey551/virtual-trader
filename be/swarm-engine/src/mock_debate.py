@@ -2,6 +2,8 @@ import json
 import time
 import sys
 from src.personas import AGENT_PERSONAS
+from src.agents import should_awake_agent
+
 
 def run_mock_debate(ticker: str, category: str, current_price: float, similar_events: list):
     """
@@ -62,10 +64,24 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
         messages = [m for m in messages if m["code"] != "FUND_A"]
         
     for item in messages:
-        persona = AGENT_PERSONAS[item["code"]]
+        code = item["code"]
+        persona = AGENT_PERSONAS[code]
         agent_name = persona["name"]
         avatar = persona["avatar_code"]
         full_msg = item["msg"]
+        
+        should_awake, skip_reason = should_awake_agent(code, category, similar_events)
+        if not should_awake:
+            print(json.dumps({
+                "agent_name": agent_name,
+                "avatar_code": avatar,
+                "message": f"[{agent_name} did not join the debate: {skip_reason}]",
+                "status": "COMPLETED"
+            }))
+            sys.stdout.flush()
+            time.sleep(0.5)
+            continue
+
         
         # 1. Send TYPING
         print(json.dumps({

@@ -106,3 +106,50 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
     sys.stdout.flush()
 
     return full_text
+
+
+def should_awake_agent(agent_code: str, category: str, similar_events: list) -> tuple[bool, str]:
+    """
+    Determines if an agent has reasoning/data to participate in the debate.
+    Returns (should_awake, reason).
+    """
+    # Category checks
+    cat_upper = category.upper()
+    if agent_code == "CRYPTO_A" and cat_upper != "CRYPTO":
+        return False, f"Agent is specialized in CRYPTO, but asset category is {category}."
+    if agent_code == "FOREX_A" and cat_upper != "FOREX":
+        return False, f"Agent is specialized in FOREX, but asset category is {category}."
+    if agent_code == "COMM_A" and cat_upper != "COMMODITY":
+        return False, f"Agent is specialized in COMMODITY, but asset category is {category}."
+    if agent_code == "FUND_A" and cat_upper not in ["STOCKS", "INDEX"]:
+        return False, f"Agent is specialized in STOCKS/INDEX fundamentals, but asset category is {category}."
+
+    # Specific data-driven reasoning for social/sentiment agent
+    if agent_code == "SENT_A":
+        # Check if there are news/events related to the asset ticker
+        if not similar_events:
+            return False, "No recent news or sentiment events found in database or internet search."
+        
+        # Check if any event has been updated/published within the last 7 days
+        import datetime
+        now = datetime.datetime.utcnow()
+        has_recent = False
+        for ev in similar_events:
+            pub_at = ev.get("published_at")
+            if isinstance(pub_at, str):
+                try:
+                    # Handle ISO string formatting
+                    pub_at = datetime.datetime.fromisoformat(pub_at)
+                except Exception:
+                    pass
+            if isinstance(pub_at, datetime.datetime):
+                if pub_at.tzinfo is not None:
+                    pub_at = pub_at.replace(tzinfo=None)
+                if (now - pub_at).days <= 7:
+                    has_recent = True
+                    break
+        if not has_recent:
+            return False, "No new social or news updates in the last 7 days."
+
+    return True, "Agent has active reasoning and data to participate in the debate."
+

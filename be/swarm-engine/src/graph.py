@@ -1,8 +1,9 @@
 import json
+import sys
 from langgraph.graph import StateGraph, END
 from src.state import SwarmState, AgentOpinion, DebateMessage
 from src.personas import AGENT_PERSONAS
-from src.agents import stream_agent_speech, GEMINI_API_KEY
+from src.agents import stream_agent_speech, GEMINI_API_KEY, should_awake_agent
 from src.database_client import db_client
 from src.mock_debate import run_mock_debate
 
@@ -13,13 +14,20 @@ def retrieve_analogy_node(state: SwarmState) -> dict:
     """
     ticker = state["ticker"]
     category = state["category"]
+    price = state["current_price"]
     print(f"[Node: RetrieveAnalogy] Querying historical events correlating with {ticker} ({category})...")
     
     # Query matching keywords
     query_text = "lãi suất" if category == "FOREX" else ("oil" if ticker in ["USO", "CL=F"] else ticker)
-    past_events = db_client.get_similar_past_events(query_text=query_text, limit=3)
+    past_events = db_client.get_similar_past_events(
+        query_text=query_text, 
+        limit=3, 
+        ticker=ticker, 
+        current_price=price
+    )
     
     return {"similar_historical_events": past_events}
+
 
 def specialist_analysis_node(state: SwarmState) -> dict:
     """
@@ -44,6 +52,18 @@ def specialist_analysis_node(state: SwarmState) -> dict:
     for code in active_codes:
         if code == "RISK_M":
             # Risk manager speaks in a later node
+            continue
+            
+        should_awake, skip_reason = should_awake_agent(code, category, state.get("similar_historical_events", []))
+        if not should_awake:
+            persona = AGENT_PERSONAS[code]
+            print(json.dumps({
+                "agent_name": persona["name"],
+                "avatar_code": persona["avatar_code"],
+                "message": f"[{persona['name']} did not join the debate: {skip_reason}]",
+                "status": "COMPLETED"
+            }))
+            sys.stdout.flush()
             continue
             
         persona = AGENT_PERSONAS[code]
@@ -112,6 +132,9 @@ def swarm_debate_node(state: SwarmState) -> dict:
     else:
         debaters.append("MACRO_A")
         
+    # Only allow agents who have entered an opinion in Round 1
+    debaters = [d for d in debaters if d in state["opinions"]]
+    
     for code in debaters:
         persona = AGENT_PERSONAS[code]
         prompt_system = f"System Instruction: {persona['prompt']} You are entering Round 2 of the Swarm Debate. You must critique, agree, or disagree with the opinions of the other agents. Be conversational and references other agents by name."
