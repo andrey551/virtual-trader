@@ -86,4 +86,23 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
         "status": "COMPLETED"
     }))
     sys.stdout.flush()
+
+    # 3. Print METRICS for tracking
+    prompt_tokens = max(1, len(prompt_system + prompt_user) // 4)
+    completion_tokens = max(1, len(full_text) // 4)
+    total_tokens = prompt_tokens + completion_tokens
+    
+    model_name = GEMINI_PRO_MODEL if agent_code == "MOD_O" else GEMINI_FLASH_MODEL
+    
+    print(json.dumps({
+        "type": "metrics",
+        "agent_name": agent_name,
+        "event": "awake",
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "model": model_name
+    }))
+    sys.stdout.flush()
+
     return full_text

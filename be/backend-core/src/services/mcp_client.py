@@ -1,9 +1,17 @@
 import sys
 import os
 import json
+import time
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from src.config import settings
+from src.metrics import (
+    MCP_TOOL_DURATION,
+    MCP_TOOL_CALLS_TOTAL,
+    MCP_CRAWLED_BYTES,
+    MCP_CRAWLED_ITEMS
+)
+
 
 class MCPClientService:
     def __init__(self):
@@ -71,13 +79,40 @@ class MCPClientService:
             if not self.session:
                 raise RuntimeError("MCP Session is not active and failed to initialize.")
                 
+        start_time = time.perf_counter()
+        status = "success"
         try:
             result = await self.session.call_tool(tool_name, arguments)
             # The tool result contains text content, which is a JSON string
             content_text = result.content[0].text
-            return json.loads(content_text)
+            parsed_result = json.loads(content_text)
+            
+            if parsed_result.get("status") == "error":
+                status = "error"
+            
+            # Record sizes and items count
+            size_bytes = len(content_text.encode('utf-8'))
+            MCP_CRAWLED_BYTES.labels(tool_name=tool_name).inc(size_bytes)
+            
+            # Estimate items count
+            items_count = 1
+            if isinstance(parsed_result, dict):
+                # E.g. lists inside dict keys like "news", "quotes", etc.
+                for k, v in parsed_result.items():
+                    if isinstance(v, list):
+                        items_count = max(items_count, len(v))
+            elif isinstance(parsed_result, list):
+                items_count = len(parsed_result)
+            MCP_CRAWLED_ITEMS.labels(tool_name=tool_name).inc(items_count)
+            
+            return parsed_result
         except Exception as e:
+            status = "error"
             return {"status": "error", "message": f"MCP execution failed: {str(e)}"}
+        finally:
+            duration = time.perf_counter() - start_time
+            MCP_TOOL_DURATION.labels(tool_name=tool_name, status=status).observe(duration)
+            MCP_TOOL_CALLS_TOTAL.labels(tool_name=tool_name, status=status).inc()
 
     async def stop(self):
         """

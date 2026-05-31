@@ -1,12 +1,24 @@
 import asyncio
+import time
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_client import make_asgi_app
+
 from src.config import settings
 from src.database import engine, Base
 from src.routes import assets, events, recommendations, mcp_bridge
 from src.services.mcp_client import mcp_client
 from src.workers.news_scheduler import start_scheduler, shutdown_scheduler
+from src.metrics import (
+    HTTP_REQUEST_DURATION,
+    HTTP_REQUESTS_TOTAL,
+    WS_CONNECTIONS_ACTIVE,
+    SWARM_AGENT_AWAKENINGS,
+    SWARM_TOKEN_USAGE,
+    SWARM_CACHE_LOOKUPS,
+    SWARM_DEBATE_DURATION,
+)
 
 # Auto-create tables on startup (excellent out-of-the-box SQLite/PostgreSQL development)
 if not settings.DATABASE_URL.startswith("sqlite"):
@@ -58,6 +70,31 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Mount Prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
+@app.middleware("http")
+async def prometheus_middleware(request: Request, call_next):
+    path = request.url.path
+    if path == "/metrics":
+        return await call_next(request)
+        
+    method = request.method
+    start_time = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    except Exception as e:
+        status_code = 500
+        raise e
+    finally:
+        duration = time.perf_counter() - start_time
+        HTTP_REQUEST_DURATION.labels(method=method, endpoint=path, status=status_code).observe(duration)
+        HTTP_REQUESTS_TOTAL.labels(method=method, endpoint=path, status=status_code).inc()
+
 # CORS configurations
 app.add_middleware(
     CORSMiddleware,
@@ -87,6 +124,7 @@ def read_root():
 @app.websocket("/ws/prices")
 async def websocket_prices_endpoint(websocket: WebSocket):
     await websocket.accept()
+    WS_CONNECTIONS_ACTIVE.labels(endpoint="/ws/prices").inc()
     
     # Parse query parameters (e.g. ?tickers=AAPL,BTC-USD)
     query_params = websocket.query_params
@@ -96,6 +134,7 @@ async def websocket_prices_endpoint(websocket: WebSocket):
     if not tickers:
         await websocket.send_json({"error": "No tickers provided"})
         await websocket.close()
+        WS_CONNECTIONS_ACTIVE.labels(endpoint="/ws/prices").dec()
         return
         
     print(f"[WebSocket Price] Connection accepted for tickers: {tickers}")
@@ -116,8 +155,6 @@ async def websocket_prices_endpoint(websocket: WebSocket):
                     currency_val = "USD"
                     
                     # Determine whether it is crypto (Binance) or general yfinance
-                    # Crypto tickers from Binance are usually letters only (e.g. BTCUSDT, ETHUSDT)
-                    # general tickers have dashes/symbols (e.g. BTC-USD, AAPL)
                     is_binance_crypto = (
                         "USDT" in ticker 
                         and "-" not in ticker 
@@ -174,6 +211,8 @@ async def websocket_prices_endpoint(websocket: WebSocket):
         print(f"[WebSocket Price] Disconnected for tickers: {tickers}")
     except Exception as e:
         print(f"[WebSocket Price] Connection closed due to error: {str(e)}")
+    finally:
+        WS_CONNECTIONS_ACTIVE.labels(endpoint="/ws/prices").dec()
 
 # -------------------------------------------------------------
 # WebSockets Realtime Swarm Agent Debate Stream
@@ -190,6 +229,10 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     from src.models.prediction_cache import PredictionCache
 
     await websocket.accept()
+    WS_CONNECTIONS_ACTIVE.labels(endpoint="/ws/swarm-debate").inc()
+    start_time = time.perf_counter()
+    status = "success"
+    
     print(f"[WebSocket Debate] Agent session {session_id} connected")
     
     # Default parameters
@@ -203,75 +246,81 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
         
     db = SessionLocal()
     try:
-        asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
-        if asset:
-            category = asset.category
+        try:
+            asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
+            if asset:
+                category = asset.category
+                
+            # Fetch real-time price via MCP
+            is_binance_crypto = ("USDT" in ticker and "-" not in ticker and "/" not in ticker)
             
-        # Fetch real-time price via MCP
-        is_binance_crypto = ("USDT" in ticker and "-" not in ticker and "/" not in ticker)
+            if is_binance_crypto:
+                res = await mcp_client.call_tool("get_crypto_ticker", {"symbol": ticker, "depth": 1})
+                if res.get("status") == "success":
+                    price = float(res.get("price", 0.0))
+            else:
+                res = await mcp_client.call_tool("get_market_price", {"ticker": ticker})
+                if res.get("status") == "success":
+                    price = float(res.get("price", 0.0))
+                    
+        except Exception as e:
+            print(f"[WebSocket Debate] DB lookup or Price fetch failed: {e}")
+            
+        # Check Cache
+        cache_hit = False
+        try:
+            cache = db.query(PredictionCache).filter(PredictionCache.ticker == ticker).order_by(PredictionCache.created_at.desc()).first()
+            if cache:
+                diff_pct = abs(price - cache.price_at_predict) / cache.price_at_predict
+                if diff_pct < 0.01:
+                    cache_hit = True
+                    SWARM_CACHE_LOOKUPS.labels(status="hit").inc()
+                    print(f"[WebSocket Debate] Cache HIT for {ticker}. Diff: {diff_pct:.4f}. Streaming cached debate...")
+                    debates = db.query(AgentDebate).filter(AgentDebate.session_id == cache.session_id).order_by(AgentDebate.id).all()
+                    for d in debates:
+                        payload = {
+                            "agent_name": d.agent_name,
+                            "avatar_code": d.avatar_code,
+                            "message": d.message,
+                            "status": "COMPLETED",
+                            "session_id": session_id
+                        }
+                        await websocket.send_json(payload)
+                        await asyncio.sleep(0.1) # small delay for UX
+                    
+                    db.close()
+                    # Keep connection alive
+                    while True:
+                        await websocket.receive_text()
+                        await asyncio.sleep(1)
+                    return
+        except Exception as e:
+            print(f"[WebSocket Debate] Cache check failed: {e}")
+            
+        if not cache_hit:
+            SWARM_CACHE_LOOKUPS.labels(status="miss").inc()
+            
+        # Build absolute path to swarm-engine main.py CLI
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
         
-        if is_binance_crypto:
-            res = await mcp_client.call_tool("get_crypto_ticker", {"symbol": ticker, "depth": 1})
-            if res.get("status") == "success":
-                price = float(res.get("price", 0.0))
-        else:
-            res = await mcp_client.call_tool("get_market_price", {"ticker": ticker})
-            if res.get("status") == "success":
-                price = float(res.get("price", 0.0))
-                
-    except Exception as e:
-        print(f"[WebSocket Debate] DB lookup or Price fetch failed: {e}")
+        cmd = [
+            sys.executable,
+            script_path,
+            "--ticker", ticker,
+            "--category", category,
+            "--price", str(price)
+        ]
         
-    # Check Cache
-    try:
-        cache = db.query(PredictionCache).filter(PredictionCache.ticker == ticker).order_by(PredictionCache.created_at.desc()).first()
-        if cache:
-            diff_pct = abs(price - cache.price_at_predict) / cache.price_at_predict
-            if diff_pct < 0.01:
-                print(f"[WebSocket Debate] Cache HIT for {ticker}. Diff: {diff_pct:.4f}. Streaming cached debate...")
-                debates = db.query(AgentDebate).filter(AgentDebate.session_id == cache.session_id).order_by(AgentDebate.id).all()
-                for d in debates:
-                    payload = {
-                        "agent_name": d.agent_name,
-                        "avatar_code": d.avatar_code,
-                        "message": d.message,
-                        "status": "COMPLETED",
-                        "session_id": session_id
-                    }
-                    await websocket.send_json(payload)
-                    await asyncio.sleep(0.1) # small delay for UX
-                
-                db.close()
-                # Keep connection alive
-                while True:
-                    await websocket.receive_text()
-                    await asyncio.sleep(1)
-                return
-    except Exception as e:
-        print(f"[WebSocket Debate] Cache check failed: {e}")
+        print(f"[WebSocket Debate] Spawning swarm-engine CLI subprocess: {' '.join(cmd)}")
         
-    # Build absolute path to swarm-engine main.py CLI
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
-    
-    cmd = [
-        sys.executable,
-        script_path,
-        "--ticker", ticker,
-        "--category", category,
-        "--price", str(price)
-    ]
-    
-    print(f"[WebSocket Debate] Spawning swarm-engine CLI subprocess: {' '.join(cmd)}")
-    
-    # Propagate GEMINI_API_KEY explicitly to child process environment
-    env = os.environ.copy()
-    if settings.GEMINI_API_KEY:
-        env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
-    
-    db_session_id = f"cache_{uuid.uuid4().hex[:8]}"
-    
-    try:
+        # Propagate GEMINI_API_KEY explicitly to child process environment
+        env = os.environ.copy()
+        if settings.GEMINI_API_KEY:
+            env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+        
+        db_session_id = f"cache_{uuid.uuid4().hex[:8]}"
+        
         print("[WebSocket Debate] Waiting for Swarm Semaphore...")
         async with SWARM_SEMAPHORE:
             print("[WebSocket Debate] Semaphore acquired. Starting process.")
@@ -296,6 +345,20 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 try:
                     # Parse JSON output from swarm-engine
                     data = json.loads(line_str)
+                    
+                    # Intercept metrics payload
+                    if data.get("type") == "metrics":
+                        agent_name = data.get("agent_name", "Unknown")
+                        model = data.get("model", "unknown")
+                        if data.get("event") == "awake":
+                            SWARM_AGENT_AWAKENINGS.labels(agent_name=agent_name, model=model).inc()
+                        prompt_tokens = data.get("prompt_tokens", 0)
+                        completion_tokens = data.get("completion_tokens", 0)
+                        total_tokens = data.get("total_tokens", 0)
+                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="prompt").inc(prompt_tokens)
+                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="completion").inc(completion_tokens)
+                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="total").inc(total_tokens)
+                        continue  # Do not forward metrics JSON to the frontend
                     
                     # Save completed messages to DB cache
                     if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
@@ -351,6 +414,11 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     except WebSocketDisconnect:
         print(f"[WebSocket Debate] Agent session {session_id} disconnected")
     except Exception as e:
+        status = "error"
         print(f"[WebSocket Debate] Connection closed: {str(e)}")
     finally:
         db.close()
+        duration = time.perf_counter() - start_time
+        SWARM_DEBATE_DURATION.labels(status=status).observe(duration)
+        WS_CONNECTIONS_ACTIVE.labels(endpoint="/ws/swarm-debate").dec()
+

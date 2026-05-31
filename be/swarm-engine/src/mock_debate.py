@@ -98,4 +98,22 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
             "status": "COMPLETED"
         }))
         sys.stdout.flush()
+
+        # 4. Send METRICS for tracking
+        prompt_tokens = 250
+        completion_tokens = max(1, len(full_msg) // 4)
+        total_tokens = prompt_tokens + completion_tokens
+        model_name = "gemini-2.5-flash" if item["code"] == "MOD_O" else "gemini-2.5-flash-lite"
+        print(json.dumps({
+            "type": "metrics",
+            "agent_name": agent_name,
+            "event": "awake",
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "model": model_name
+        }))
+        sys.stdout.flush()
+
         time.sleep(1.0) # pause between agents
+
