@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from src.database import SessionLocal
 from src.services.mcp_client import mcp_client
 from src.models.event import NewsEvent, EventAssetImpact
+from src.workers.accuracy_worker import evaluate_active_recommendations
 from decimal import Decimal
 import datetime
 import asyncio
@@ -88,8 +89,9 @@ def start_scheduler():
     if not scheduler.running:
         # Set up recurring interval triggers
         scheduler.add_job(scan_all_topics, "interval", seconds=60, id="news_scanner_job", replace_existing=True)
+        scheduler.add_job(evaluate_active_recommendations, "interval", seconds=30, id="accuracy_eval_job", replace_existing=True)
         scheduler.start()
-        print("AsyncIOScheduler background worker initiated successfully.")
+        print("AsyncIOScheduler background worker initiated successfully with news and accuracy jobs.")
 
 def shutdown_scheduler():
     if scheduler.running:

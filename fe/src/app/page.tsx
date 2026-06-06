@@ -221,18 +221,28 @@ export default function Home() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
           
           {/* Hit Rate Stat */}
-          <div className="p-6 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.03] space-y-3 relative group hover:bg-emerald-500/[0.05] transition-all duration-300">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 font-mono">Forecast Accuracy</span>
-              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+          <div className="p-6 rounded-2xl border border-emerald-500/25 bg-emerald-500/[0.03] space-y-3 relative group hover:bg-emerald-500/[0.05] transition-all duration-300 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider text-emerald-800 font-mono">Forecast Accuracy</span>
+                <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-4xl font-black text-emerald-800 tracking-tight font-mono">{avgAccuracy}%</p>
+                <p className="text-xs text-zinc-700 font-bold">Directional Hit Rate</p>
+              </div>
+              <p className="text-[11px] text-zinc-500 leading-relaxed">
+                Average correct trend prediction correctness (upward/downward consensus) across active tickers in the consensus database.
+              </p>
             </div>
-            <div className="space-y-1">
-              <p className="text-4xl font-black text-emerald-800 tracking-tight font-mono">{avgAccuracy}%</p>
-              <p className="text-xs text-zinc-700 font-bold">Directional Hit Rate</p>
+            <div className="pt-2 select-none">
+              <Link 
+                href="/accuracy-rules" 
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider bg-emerald-800/10 text-emerald-800 border border-emerald-800/20 hover:bg-emerald-800/20 hover:border-emerald-800/30 transition-all cursor-pointer w-fit"
+              >
+                View Evaluation Rules &gt;
+              </Link>
             </div>
-            <p className="text-[11px] text-zinc-500 leading-relaxed">
-              Average correct trend prediction correctness (upward/downward consensus) across active tickers in the consensus database.
-            </p>
           </div>
 
           {/* Outperformance / Alpha Stat */}

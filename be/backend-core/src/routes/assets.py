@@ -2,9 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from src.database import get_db
 from src.models.asset import Asset
+from src.models.recommendation import Recommendation
 from src.schemas.asset import AssetRead, AssetReadWithPrice, AssetDetailRead
 from src.services.mcp_client import mcp_client
 from typing import List, Optional
+from decimal import Decimal
 import asyncio
 
 router = APIRouter(prefix="/assets", tags=["Assets"])
@@ -98,6 +100,72 @@ def seed_assets_if_empty(db: Session):
         db.add_all(mock_assets)
         db.commit()
 
+def seed_recommendations_if_empty(db: Session):
+    """
+    Seeds initial CLOSED and ACTIVE recommendations so there is data to dynamically
+    evaluate and calculate accuracy score / alpha outperformance metrics.
+    """
+    count = db.query(Recommendation).count()
+    if count == 0:
+        mock_recs = [
+            # Closed recommendations for BTC-USD
+            Recommendation(
+                ticker="BTC-USD", recommendation_type="BUY", entry_price=Decimal("60000.00"),
+                target_price=Decimal("63000.00"), stop_loss=Decimal("58000.00"), current_price=Decimal("63000.00"),
+                status="CLOSED", realized_return=Decimal("5.00"), verdict_reasoning="Strong order book depth and positive Fed commentary."
+            ),
+            Recommendation(
+                ticker="BTC-USD", recommendation_type="BUY", entry_price=Decimal("62000.00"),
+                target_price=Decimal("65000.00"), stop_loss=Decimal("60000.00"), current_price=Decimal("65000.00"),
+                status="CLOSED", realized_return=Decimal("4.84"), verdict_reasoning="Breakout of multi-week consolidation range."
+            ),
+            Recommendation(
+                ticker="BTC-USD", recommendation_type="BUY", entry_price=Decimal("66000.00"),
+                target_price=Decimal("69000.00"), stop_loss=Decimal("64000.00"), current_price=Decimal("64000.00"),
+                status="CLOSED", realized_return=Decimal("-3.03"), verdict_reasoning="Failed breakout trigger due to macro liquidity flush."
+            ),
+            # Closed recommendations for AAPL
+            Recommendation(
+                ticker="AAPL", recommendation_type="BUY", entry_price=Decimal("170.00"),
+                target_price=Decimal("180.00"), stop_loss=Decimal("165.00"), current_price=Decimal("180.00"),
+                status="CLOSED", realized_return=Decimal("5.88"), verdict_reasoning="Oversold technical bounce signal on daily RSI."
+            ),
+            Recommendation(
+                ticker="AAPL", recommendation_type="SELL", entry_price=Decimal("175.00"),
+                target_price=Decimal("165.00"), stop_loss=Decimal("180.00"), current_price=Decimal("165.00"),
+                status="CLOSED", realized_return=Decimal("5.71"), verdict_reasoning="Bearish MACD crossover in overbought territory."
+            ),
+            # Closed recommendations for TSLA
+            Recommendation(
+                ticker="TSLA", recommendation_type="SELL", entry_price=Decimal("180.00"),
+                target_price=Decimal("160.00"), stop_loss=Decimal("190.00"), current_price=Decimal("160.00"),
+                status="CLOSED", realized_return=Decimal("11.11"), verdict_reasoning="Negative EV delivery reports and technical channel breakdown."
+            ),
+            Recommendation(
+                ticker="TSLA", recommendation_type="BUY", entry_price=Decimal("200.00"),
+                target_price=Decimal("220.00"), stop_loss=Decimal("190.00"), current_price=Decimal("190.00"),
+                status="CLOSED", realized_return=Decimal("-5.00"), verdict_reasoning="Anticipated product launch hype did not hold support."
+            ),
+            # Active recommendations to be evaluated in real-time
+            Recommendation(
+                ticker="BTC-USD", recommendation_type="BUY", entry_price=Decimal("67250.00"),
+                target_price=Decimal("72000.00"), stop_loss=Decimal("63000.00"), current_price=Decimal("67250.00"),
+                status="ACTIVE", verdict_reasoning="Real-time bullish consensus with rising volume."
+            ),
+            Recommendation(
+                ticker="AAPL", recommendation_type="BUY", entry_price=Decimal("180.00"),
+                target_price=Decimal("200.00"), stop_loss=Decimal("170.00"), current_price=Decimal("180.00"),
+                status="ACTIVE", verdict_reasoning="Steady accumulation above the 50-day moving average."
+            ),
+            Recommendation(
+                ticker="TSLA", recommendation_type="SELL", entry_price=Decimal("170.00"),
+                target_price=Decimal("140.00"), stop_loss=Decimal("185.00"), current_price=Decimal("170.00"),
+                status="ACTIVE", verdict_reasoning="Persistent bearish indicators across macro sectors."
+            ),
+        ]
+        db.add_all(mock_recs)
+        db.commit()
+
 @router.get("", response_model=List[AssetReadWithPrice])
 async def get_assets(
     category: Optional[str] = Query(None, description="Filter by category (STOCKS, CRYPTO, FOREX, INDEX)"),
@@ -105,6 +173,7 @@ async def get_assets(
     db: Session = Depends(get_db)
 ):
     seed_assets_if_empty(db)
+    seed_recommendations_if_empty(db)
     query = db.query(Asset)
     
     if category:
@@ -155,6 +224,7 @@ async def get_assets(
 @router.get("/{ticker}", response_model=AssetDetailRead)
 async def get_asset_detail(ticker: str, db: Session = Depends(get_db)):
     seed_assets_if_empty(db)
+    seed_recommendations_if_empty(db)
     asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
     
     if not asset:
