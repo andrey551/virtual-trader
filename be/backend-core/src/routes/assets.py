@@ -374,6 +374,45 @@ async def get_asset_detail(ticker: str, db: Session = Depends(get_db)):
             "Market sentiment remains tied to broader sector indexes and general macroeconomic liquidity factors."
         ]
         
+    # Fetch predictions from cache
+    from src.models.prediction_cache import PredictionCache
+    forecast_timeline = {}
+    try:
+        cache = db.query(PredictionCache).filter(PredictionCache.ticker == asset.ticker).order_by(PredictionCache.created_at.desc()).first()
+        if cache and cache.predict_price_5s is not None:
+            forecast_timeline = {
+                "5s": cache.predict_price_5s,
+                "5m": cache.predict_price_5m,
+                "5h": cache.predict_price_5h,
+                "5d": cache.predict_price_5d
+            }
+        else:
+            bias = 0.0
+            if (asset.system_verdict or "HOLD") in ["BUY", "STRONG_BUY"]:
+                bias = 0.015
+            elif (asset.system_verdict or "HOLD") in ["SELL", "STRONG_SELL"]:
+                bias = -0.015
+            
+            if rsi_val > 70:
+                bias -= 0.005
+            elif rsi_val < 30:
+                bias += 0.005
+                
+            forecast_timeline = {
+                "5s": [price * (1 + bias * 0.0001 * (i + 1)) for i in range(5)],
+                "5m": [price * (1 + bias * 0.001 * (i + 1)) for i in range(5)],
+                "5h": [price * (1 + bias * 0.01 * (i + 1)) for i in range(5)],
+                "5d": [price * (1 + bias * 0.1 * (i + 1)) for i in range(5)]
+            }
+    except Exception as e:
+        print(f"Error querying cache for asset detail: {e}")
+        forecast_timeline = {
+            "5s": [price] * 5,
+            "5m": [price] * 5,
+            "5h": [price] * 5,
+            "5d": [price] * 5
+        }
+
     return {
         "id": asset.id,
         "ticker": asset.ticker,
@@ -394,7 +433,8 @@ async def get_asset_detail(ticker: str, db: Session = Depends(get_db)):
         "rsi": rsi_val,
         "macd": macd_str,
         "technicalReasons": technical_reasons,
-        "fundamentalReasons": fundamental_reasons
+        "fundamentalReasons": fundamental_reasons,
+        "forecastTimeline": forecast_timeline
     }
 
 @router.get("/{ticker}/candles")

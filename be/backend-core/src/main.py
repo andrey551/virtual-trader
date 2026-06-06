@@ -322,6 +322,7 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
             env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
         
         db_session_id = f"cache_{uuid.uuid4().hex[:8]}"
+        temp_forecast_data = {}
         
         print("[WebSocket Debate] Waiting for Swarm Semaphore...")
         async with SWARM_SEMAPHORE:
@@ -362,6 +363,15 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                         SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="total").inc(total_tokens)
                         continue  # Do not forward metrics JSON to the frontend
                     
+                    # Intercept consensus_forecast
+                    if data.get("type") == "consensus_forecast":
+                        temp_forecast_data = {
+                            "predict_price_5s": data.get("predict_price_5s"),
+                            "predict_price_5m": data.get("predict_price_5m"),
+                            "predict_price_5h": data.get("predict_price_5h"),
+                            "predict_price_5d": data.get("predict_price_5d")
+                        }
+                    
                     # Save completed messages to DB cache
                     if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
                         try:
@@ -397,7 +407,11 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 new_cache = PredictionCache(
                     ticker=ticker,
                     session_id=db_session_id,
-                    price_at_predict=price
+                    price_at_predict=price,
+                    predict_price_5s=temp_forecast_data.get("predict_price_5s"),
+                    predict_price_5m=temp_forecast_data.get("predict_price_5m"),
+                    predict_price_5h=temp_forecast_data.get("predict_price_5h"),
+                    predict_price_5d=temp_forecast_data.get("predict_price_5d")
                 )
                 db.add(new_cache)
                 db.commit()

@@ -318,10 +318,36 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     Risk Assessment:
     {risk_str}
     
-    Synthesize all arguments. Give a final unified recommendation verdict (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL) and a confidence percentage (0.0 to 100.0) as structured output.
+    Synthesize all arguments and make quantitative price forecasts. In your structured output, provide:
+    1. A final unified recommendation verdict (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL) and a confidence percentage (0.0 to 100.0).
+    2. A trajectory of 5 predicted prices for:
+       - `predict_price_5s`: next 5 seconds (at steps 1s, 2s, 3s, 4s, 5s from now).
+       - `predict_price_5m`: next 5 minutes (at steps 1m, 2m, 3m, 4m, 5m from now).
+       - `predict_price_5h`: next 5 hours (at steps 1h, 2h, 3h, 4h, 5h from now).
+       - `predict_price_5d`: next 5 days (at steps 1d, 2d, 3d, 4d, 5d from now).
+       
+    The trajectories must be mathematically coherent:
+    - Starting from the current price of {price}.
+    - Sloped upward for BUY/STRONG_BUY, downward for SELL/STRONG_SELL, or sideways/rangebound for HOLD.
+    - Logically aiming towards the Risk Manager's target price/stop loss boundaries at the 5-day horizon.
     """
     
     structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, ModeratorOutput)
+    
+    # Print consensus forecast structured JSON for backend WebSocket parsing
+    try:
+        forecast_data = {
+            "type": "consensus_forecast",
+            "ticker": ticker,
+            "predict_price_5s": [float(p) for p in structured_out.predict_price_5s],
+            "predict_price_5m": [float(p) for p in structured_out.predict_price_5m],
+            "predict_price_5h": [float(p) for p in structured_out.predict_price_5h],
+            "predict_price_5d": [float(p) for p in structured_out.predict_price_5d]
+        }
+        print(json.dumps(forecast_data))
+        sys.stdout.flush()
+    except Exception as fe:
+        print(f"[Graph Error] Failed to print consensus forecast: {fe}", file=sys.stderr)
     
     return {
         "consensus_verdict": structured_out.consensus_verdict,

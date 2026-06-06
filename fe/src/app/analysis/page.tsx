@@ -3,17 +3,18 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { 
-  LineChart, 
-  ArrowLeft, 
-  ChevronRight, 
-  FileText, 
+import {
+  LineChart,
+  ArrowLeft,
+  ChevronRight,
+  FileText,
   AlertCircle,
   ChevronDown,
   ChevronUp,
   Info,
   Search,
-  Network
+  Network,
+  TrendingUp
 } from "lucide-react";
 
 import DynamicChart from "./DynamicChart";
@@ -49,6 +50,7 @@ interface AnalyticsAsset {
   technicalReasons: { summary: string; detail: string }[];
   fundamentalReasons: string[];
   predictionAccuracy?: number;
+  forecastTimeline?: Record<string, number[]>;
 }
 
 function AnalyticsContent() {
@@ -58,7 +60,7 @@ function AnalyticsContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>([]);
   const [bottomTab, setBottomTab] = useState<"fundamental" | "knowledge">("fundamental");
-  
+
   const [selectedAsset, setSelectedAsset] = useState<AnalyticsAsset>({
     id: "loading",
     name: "Loading asset...",
@@ -79,10 +81,10 @@ function AnalyticsContent() {
     fundamentalReasons: []
   });
 
-  const filteredAssets = assetsList.filter(asset => 
+  const filteredAssets = assetsList.filter(asset =>
     asset.symbol.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  
+
   const [forecastOffset, setForecastOffset] = useState(0);
   const [liveStatus, setLiveStatus] = useState("SYS_ACTIVE");
   const [selectedInterval, setSelectedInterval] = useState("1d");
@@ -134,7 +136,7 @@ function AnalyticsContent() {
             else if (cat === "CRYPTO") cat = "Crypto";
             else if (cat === "FOREX") cat = "Forex";
             else if (cat === "INDEX") cat = "Indices";
-            
+
             return {
               id: String(item.id),
               symbol: item.ticker,
@@ -162,11 +164,11 @@ function AnalyticsContent() {
       try {
         const detailRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}`);
         const candleRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
-        
+
         if (detailRes.ok && candleRes.ok) {
           const detail = await detailRes.json();
           const candleData = await candleRes.json();
-          
+
           interface ApiCandle {
             time: string;
             open: number;
@@ -184,24 +186,21 @@ function AnalyticsContent() {
             close: c.close,
             volume: c.volume
           }));
-          
-          // Append 8 simulated forecast candles
+
+          // Append actual agent forecast candles (5d trajectory)
           const candles = [...rawCandles];
-          if (candles.length > 0) {
+          const forecastDays = detail.forecastTimeline && detail.forecastTimeline["5d"];
+          if (candles.length > 0 && forecastDays && forecastDays.length > 0) {
             let lastClose = candles[candles.length - 1].close;
-            const isCrypto = detail.category === "CRYPTO";
-            const stepPercent = isCrypto ? 0.015 : 0.005;
-            
-            for (let i = 1; i <= 8; i++) {
-              const bias = detail.system_verdict.includes("BUY") ? 0.35 : (detail.system_verdict.includes("SELL") ? -0.35 : 0.0);
-              const change = (Math.random() - 0.5 + bias) * stepPercent;
-              const nextClose = lastClose * (1 + change);
+            for (let i = 0; i < forecastDays.length; i++) {
+              const nextClose = Number(forecastDays[i]);
               const nextOpen = lastClose;
-              const nextHigh = Math.max(nextOpen, nextClose) * (1 + Math.random() * 0.004);
-              const nextLow = Math.min(nextOpen, nextClose) * (1 - Math.random() * 0.004);
-              
+              // High/low spread slightly around open/close
+              const nextHigh = Math.max(nextOpen, nextClose) * 1.002;
+              const nextLow = Math.min(nextOpen, nextClose) * 0.998;
+
               candles.push({
-                time: `Forecast T+${i}`,
+                time: `Forecast T+${i + 1}`,
                 open: nextOpen,
                 high: nextHigh,
                 low: nextLow,
@@ -212,7 +211,7 @@ function AnalyticsContent() {
               lastClose = nextClose;
             }
           }
-          
+
           const mappedAsset = {
             id: String(detail.id),
             symbol: detail.ticker,
@@ -231,7 +230,8 @@ function AnalyticsContent() {
             predictionAccuracy: Number(detail.accuracy_score || 0),
             technicalReasons: detail.technicalReasons || [],
             fundamentalReasons: detail.fundamentalReasons || [],
-            candles: candles
+            candles: candles,
+            forecastTimeline: detail.forecastTimeline || {}
           };
           setSelectedAsset(mappedAsset);
         }
@@ -272,7 +272,7 @@ function AnalyticsContent() {
     const interval = setInterval(() => {
       setLiveStatus("COMPUTING...");
       setForecastOffset((Math.random() - 0.5) * (selectedAsset.price * 0.005));
-      
+
       setTimeout(() => {
         setLiveStatus("SYS_ACTIVE");
       }, 1500);
@@ -307,7 +307,7 @@ function AnalyticsContent() {
             let severity: "high" | "medium" | "low" = "low";
             if (score >= 0.6) severity = "high";
             else if (score >= 0.3) severity = "medium";
-            
+
             return {
               id: String(ev.id),
               title: ev.title,
@@ -326,12 +326,12 @@ function AnalyticsContent() {
     loadRelatedEvents();
   }, [symbolParam]);
 
-  const displayedTechnicals = showAllTechnical 
-    ? selectedAsset.technicalReasons 
+  const displayedTechnicals = showAllTechnical
+    ? selectedAsset.technicalReasons
     : selectedAsset.technicalReasons.slice(0, 2);
 
-  const displayedEvents = showAllEvents 
-    ? relatedEvents 
+  const displayedEvents = showAllEvents
+    ? relatedEvents
     : relatedEvents.slice(0, 2);
 
   const toggleReasonDetail = (index: number) => {
@@ -352,8 +352,8 @@ function AnalyticsContent() {
 
         {/* Search Ticker Input replacing the live status indicator */}
         <div className="relative w-full sm:w-64 select-none shrink-0">
-          <input 
-            type="text" 
+          <input
+            type="text"
             placeholder="Search / switch symbol..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -361,7 +361,7 @@ function AnalyticsContent() {
           />
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
           {searchQuery && (
-            <button 
+            <button
               onClick={() => setSearchQuery("")}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 hover:text-zinc-700 cursor-pointer"
             >
@@ -377,18 +377,16 @@ function AnalyticsContent() {
           <Link
             key={asset.id}
             href={`/analysis?symbol=${asset.symbol}`}
-            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 shrink-0 border ${
-              selectedAsset.id === asset.id 
-                ? 'bg-amber-600 text-white border-amber-500 shadow-sm' 
+            className={`px-4 py-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center gap-2 shrink-0 border ${selectedAsset.id === asset.id
+                ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
                 : 'bg-white text-zinc-600 border-[#ebdcb9] hover:bg-amber-500/5 hover:text-zinc-900'
-            }`}
+              }`}
           >
             <span className="opacity-40 font-mono text-[9px]">{"//"}</span>
             <span>{asset.symbol}</span>
-            <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${
-              asset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
-              asset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-            }`}>
+            <span className={`px-1.5 py-0.5 rounded text-[8px] font-mono font-bold ${asset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
+                asset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+              }`}>
               {asset.rating}
             </span>
           </Link>
@@ -405,7 +403,7 @@ function AnalyticsContent() {
         <span className="absolute -top-1.5 -right-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
         <span className="absolute -bottom-1.5 -left-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
         <span className="absolute -bottom-1.5 -right-1.5 text-amber-500/30 text-xs select-none pointer-events-none font-mono">+</span>
-        
+
         {/* Box Header containing Title, price and consensus badges (Aligned right edge) */}
         <div className="relative flex flex-col sm:flex-row sm:items-start justify-between border-b border-zinc-100 pb-4 gap-4">
           <div>
@@ -417,14 +415,13 @@ function AnalyticsContent() {
             </div>
             <h2 className="text-xl font-black text-zinc-900 mt-1.5 font-mono">{selectedAsset.name} ({selectedAsset.symbol})</h2>
           </div>
-          
+
           {/* PRICE + CONSENSUS BADGES aligned on the right edge */}
           <div className="flex items-center gap-4 ml-0 sm:ml-auto">
             <div className="flex items-center gap-2 shrink-0 select-none">
-              <span className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
-                selectedAsset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
-                selectedAsset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
-              }`}>
+              <span className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${selectedAsset.rating === 'BUY' ? 'bg-emerald-100 text-emerald-800' :
+                  selectedAsset.rating === 'SELL' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                }`}>
                 Consensus: {selectedAsset.rating}
               </span>
               <span className="text-[11px] text-zinc-600 font-mono font-bold bg-zinc-100 px-2.5 py-1 rounded-full border border-zinc-200/55">
@@ -434,9 +431,9 @@ function AnalyticsContent() {
                 Accuracy: {selectedAsset.predictionAccuracy || 85}%
               </span>
             </div>
-            
+
             <div className="w-px h-8 bg-zinc-200/60 hidden sm:block"></div>
-            
+
             <div className="text-right shrink-0">
               <p className="text-[10px] text-zinc-400 font-bold tracking-tight">Last Quote</p>
               <p className="font-mono font-bold text-lg text-zinc-900 leading-tight mt-0.5">
@@ -465,11 +462,10 @@ function AnalyticsContent() {
                 setSelectedInterval(tf.value);
                 setSelectedPeriod(tf.period);
               }}
-              className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${
-                selectedInterval === tf.value
+              className={`px-3 py-1 rounded-lg text-xs font-mono font-bold transition-all border ${selectedInterval === tf.value
                   ? "bg-amber-500/10 text-amber-900 border-amber-500/30"
                   : "bg-zinc-50 text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 border-transparent cursor-pointer"
-              }`}
+                }`}
             >
               {tf.label}
             </button>
@@ -478,7 +474,7 @@ function AnalyticsContent() {
 
         {/* 70/30 width and h-[460px] height layout inside the unified top card */}
         <div className="grid grid-cols-1 md:grid-cols-10 gap-6 items-stretch">
-          
+
           {/* Left Sub-Column (70%): MASSIVE Candlestick Chart */}
           <div className="md:col-span-7 flex flex-col justify-between h-[460px]">
             <div className="flex-1 bg-[#fdfbf6] border border-[#ebdcb9]/60 rounded-xl overflow-hidden p-4 min-h-[360px]">
@@ -501,18 +497,17 @@ function AnalyticsContent() {
                   <LineChart className="w-4 h-4 text-amber-600" />
                   Technical Indicators Audit
                 </h3>
-                
+
                 <div className="space-y-2">
                   {displayedTechnicals.map((reason: { summary: string; detail: string }, idx: number) => {
                     const isExpanded = expandedReasonIndex === idx;
                     return (
-                      <div 
-                        key={idx} 
-                        className={`p-3 rounded-xl border transition-all cursor-pointer ${
-                          isExpanded 
-                            ? 'bg-amber-500/10 border-amber-500/30' 
+                      <div
+                        key={idx}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer ${isExpanded
+                            ? 'bg-amber-500/10 border-amber-500/30'
                             : 'bg-zinc-50 hover:bg-amber-500/5 border-zinc-200/60'
-                        }`}
+                          }`}
                         onClick={() => toggleReasonDetail(idx)}
                       >
                         <div className="flex items-start gap-2 justify-between">
@@ -542,7 +537,7 @@ function AnalyticsContent() {
 
               {/* Expand / Collapse triggers */}
               {selectedAsset.technicalReasons.length > 2 && (
-                <button 
+                <button
                   onClick={() => setShowAllTechnical(!showAllTechnical)}
                   className="mt-3 py-1.5 border border-[#ebdcb9]/50 hover:bg-amber-500/5 text-amber-800 font-bold text-[10px] rounded-lg w-full flex items-center justify-center gap-1 select-none shrink-0 cursor-pointer"
                 >
@@ -563,40 +558,114 @@ function AnalyticsContent() {
         </div>
       </div>
 
+      {/* Consensus Price Forecasts Card */}
+      <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-6 relative overflow-hidden select-none">
+        {/* Decorative elements */}
+        <span className="absolute -top-1.5 -left-1.5 text-amber-500/30 text-xs pointer-events-none font-mono">+</span>
+        <span className="absolute -top-1.5 -right-1.5 text-amber-500/30 text-xs pointer-events-none font-mono">+</span>
+        <span className="absolute -bottom-1.5 -left-1.5 text-amber-500/30 text-xs pointer-events-none font-mono">+</span>
+        <span className="absolute -bottom-1.5 -right-1.5 text-amber-500/30 text-xs pointer-events-none font-mono">+</span>
+
+        <div className="flex items-center justify-between border-b border-zinc-100 pb-3 mb-2">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-amber-600 animate-pulse" />
+            <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-widest font-mono">Consensus Price Trajectory Forecasts</h3>
+          </div>
+          <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest hidden sm:inline">
+            SWARM_AGENT_PREDICTIONS
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[
+            { key: "5s", label: "5 Seconds Trajectory", unit: "s" },
+            { key: "5m", label: "5 Minutes Trajectory", unit: "m" },
+            { key: "5h", label: "5 Hours Trajectory", unit: "h" },
+            { key: "5d", label: "5 Days Trajectory", unit: "d" }
+          ].map((horizon) => {
+            const prices = selectedAsset.forecastTimeline?.[horizon.key];
+            const hasData = prices && prices.length > 0;
+
+            return (
+              <div key={horizon.key} className="flex flex-col space-y-3 p-4 rounded-xl bg-zinc-50/75 border border-[#ebdcb9]/40 hover:border-amber-500/30 hover:bg-amber-50/5 transition-all select-none">
+                <div className="flex items-center justify-between border-b border-zinc-200/40 pb-2">
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider font-mono">{horizon.label}</span>
+                  {hasData && (
+                    <span className="text-[8px] font-mono text-amber-700 bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-bold">
+                      ACTIVE
+                    </span>
+                  )}
+                </div>
+
+                {!hasData ? (
+                  <div className="text-[11px] text-zinc-400 italic py-6 text-center">No prediction telemetry loaded</div>
+                ) : (
+                  <div className="flex flex-col space-y-3">
+                    <div className="grid grid-cols-5 gap-1 pt-1.5 relative">
+                      {prices.map((p, idx) => {
+                        const pct = selectedAsset.price > 0 ? ((p - selectedAsset.price) / selectedAsset.price) * 100 : 0;
+                        const isUp = pct > 0.0001;
+                        const isDown = pct < -0.0001;
+
+                        return (
+                          <div key={idx} className="flex flex-col items-center text-center space-y-1 relative z-10">
+                            <span className="text-[8px] font-bold text-zinc-400 font-mono">T+{idx + 1}{horizon.unit}</span>
+                            <span className="font-mono text-[10px] font-black text-zinc-800 tracking-tighter">
+                              {p.toLocaleString("en-US", { 
+                                style: selectedAsset.category === 'Forex' ? 'decimal' : 'currency', 
+                                currency: "USD", 
+                                minimumFractionDigits: selectedAsset.category === 'Forex' ? 4 : 2 
+                              })}
+                            </span>
+                            <span className={`text-[8.5px] font-mono font-bold flex items-center gap-0.25 tracking-tighter ${
+                              isUp ? 'text-emerald-600' : isDown ? 'text-rose-600' : 'text-zinc-500'
+                            }`}>
+                              {isUp ? '▲' : isDown ? '▼' : ''}{Math.abs(pct).toFixed(2)}%
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Bottom Grid: split 2 columns (Left: Fundamental Audit; Right: stats and events) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
+
         {/* Left Column: Tabbed Panel (Fundamental Audit / Knowledge Graph) */}
         <div className="lg:col-span-2 space-y-4">
           <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-6">
-            
+
             {/* Tab Header bar */}
             <div className="flex items-center justify-between border-b border-zinc-100 pb-3 mb-2 select-none">
               <div className="flex items-center gap-4">
                 <button
                   onClick={() => setBottomTab("fundamental")}
-                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-                    bottomTab === "fundamental"
+                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${bottomTab === "fundamental"
                       ? "text-amber-800 border-amber-600"
                       : "text-zinc-400 border-transparent hover:text-zinc-650"
-                  }`}
+                    }`}
                 >
                   <FileText className="w-4 h-4" />
                   Fundamental Audit
                 </button>
                 <button
                   onClick={() => setBottomTab("knowledge")}
-                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
-                    bottomTab === "knowledge"
+                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${bottomTab === "knowledge"
                       ? "text-amber-800 border-amber-600"
                       : "text-zinc-400 border-transparent hover:text-zinc-650"
-                  }`}
+                    }`}
                 >
                   <Network className="w-4 h-4" />
                   Consensus Knowledge Network
                 </button>
               </div>
-              
+
               <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest hidden sm:inline">
                 {bottomTab === "fundamental" ? "FACTOR_INTELLIGENCE" : "RELATIONAL_MULTIGRAPH"}
               </span>
@@ -622,7 +691,7 @@ function AnalyticsContent() {
 
         {/* Right Column: Events & Indexes */}
         <div className="space-y-8">
-          
+
           {/* Related Event Updates (Accordion Expandable) */}
           <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-4 flex flex-col justify-between">
             <div className="space-y-4">
@@ -630,7 +699,7 @@ function AnalyticsContent() {
                 <AlertCircle className="w-4 h-4 text-amber-600" />
                 <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-widest">Related Event Updates</h3>
               </div>
-              
+
               {relatedEvents.length === 0 ? (
                 <p className="text-xs text-zinc-400 text-center py-4">No recent major events associated with this ticker.</p>
               ) : (
@@ -642,7 +711,7 @@ function AnalyticsContent() {
                         <span>{ev.impactScore}</span>
                       </div>
                       <p className="text-xs font-semibold text-zinc-800 leading-normal">{ev.title}</p>
-                      <Link 
+                      <Link
                         href={`/events`}
                         className="text-[10px] text-amber-700 font-bold hover:underline inline-flex items-center gap-1 pt-1"
                       >
@@ -656,7 +725,7 @@ function AnalyticsContent() {
 
             {/* Event expand trigger */}
             {relatedEvents.length > 2 && (
-              <button 
+              <button
                 onClick={() => setShowAllEvents(!showAllEvents)}
                 className="mt-4 py-1.5 border border-[#ebdcb9]/50 hover:bg-amber-500/5 text-amber-800 font-bold text-[10px] rounded-lg w-full flex items-center justify-center gap-1 select-none shrink-0 cursor-pointer"
               >
@@ -676,14 +745,13 @@ function AnalyticsContent() {
           {/* Financial Index Stats */}
           <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-4">
             <h3 className="text-xs font-bold text-zinc-700 uppercase tracking-widest">Financial Indexes</h3>
-            
+
             <div className="space-y-3 text-xs">
               <div className="flex justify-between py-2 border-b border-zinc-100">
                 <span className="text-zinc-500">Consensus Verdict</span>
-                <span className={`font-bold ${
-                  selectedAsset.rating === 'BUY' ? 'text-emerald-600' :
-                  selectedAsset.rating === 'SELL' ? 'text-rose-600' : 'text-amber-600'
-                }`}>{selectedAsset.rating}</span>
+                <span className={`font-bold ${selectedAsset.rating === 'BUY' ? 'text-emerald-600' :
+                    selectedAsset.rating === 'SELL' ? 'text-rose-600' : 'text-amber-600'
+                  }`}>{selectedAsset.rating}</span>
               </div>
               <div className="flex justify-between py-2 border-b border-zinc-100">
                 <span className="text-zinc-500">Verdict Confidence</span>
@@ -715,7 +783,7 @@ function AnalyticsContent() {
           </div>
 
         </div>
-        
+
       </div>
     </div>
   );

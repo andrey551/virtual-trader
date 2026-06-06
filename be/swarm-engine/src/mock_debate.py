@@ -131,5 +131,21 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
         }))
         sys.stdout.flush()
 
+        if code == "MOD_O":
+            drift = 0.015 # +1.5% drift over 5 days
+            p5s = [current_price * (1 + drift * 0.0001 * (i + 1)) for i in range(5)]
+            p5m = [current_price * (1 + drift * 0.001 * (i + 1)) for i in range(5)]
+            p5h = [current_price * (1 + drift * 0.02 * (i + 1)) for i in range(5)]
+            p5d = [current_price * (1 + drift * 0.2 * (i + 1)) for i in range(5)]
+            print(json.dumps({
+                "type": "consensus_forecast",
+                "ticker": ticker,
+                "predict_price_5s": p5s,
+                "predict_price_5m": p5m,
+                "predict_price_5h": p5h,
+                "predict_price_5d": p5d
+            }))
+            sys.stdout.flush()
+
         time.sleep(1.0) # pause between agents
 

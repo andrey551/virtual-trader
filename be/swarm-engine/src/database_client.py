@@ -67,6 +67,8 @@ class DatabaseClient:
     def __init__(self):
         self.engine = create_engine(DATABASE_URL, connect_args={"timeout": 15} if DATABASE_URL.startswith("sqlite") else {})
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        # Auto-create tables if missing to prevent OperationalError
+        Base.metadata.create_all(self.engine)
         
     def get_db(self):
         db = self.SessionLocal()

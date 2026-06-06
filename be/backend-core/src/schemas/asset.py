@@ -51,3 +51,4 @@ class AssetDetailRead(AssetRead):
     macd: str = "Neutral"
     technicalReasons: list[TechnicalReasonSchema] = []
     fundamentalReasons: list[str] = []
+    forecastTimeline: dict[str, list[float]] = {}

@@ -28,6 +28,10 @@ class ModeratorOutput(BaseModel):
     consensus_verdict: str = Field(description="Final synthesized consensus verdict. Must be exactly one of: STRONG_BUY, BUY, HOLD, SELL, or STRONG_SELL.")
     consensus_confidence: float = Field(description="Synthesized consensus confidence level from 0.0 to 100.0.")
     synthesis_rationale: str = Field(description="Detailed consensus reasoning synthesizing Round 1 and Round 2 viewpoints.")
+    predict_price_5s: List[float] = Field(description="Array of 5 predicted prices for the next 5 seconds (1s, 2s, 3s, 4s, 5s).")
+    predict_price_5m: List[float] = Field(description="Array of 5 predicted prices for the next 5 minutes (1m, 2m, 3m, 4m, 5m).")
+    predict_price_5h: List[float] = Field(description="Array of 5 predicted prices for the next 5 hours (1h, 2h, 3h, 4h, 5h).")
+    predict_price_5d: List[float] = Field(description="Array of 5 predicted prices for the next 5 days (1d, 2d, 3d, 4d, 5d).")
 
 # Initialize Gemini Chat LLMs safely if key is available
 llm_flash = None
@@ -240,7 +244,15 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
         elif output_schema == RiskManagerOutput:
             return RiskManagerOutput(entry_zone_min=0.0, entry_zone_max=0.0, target_price=0.0, stop_loss=0.0, risk_verdict="HOLD", risk_analysis=error_msg)
         else:
-            return ModeratorOutput(consensus_verdict="HOLD", consensus_confidence=50.0, synthesis_rationale=error_msg)
+            return ModeratorOutput(
+                consensus_verdict="HOLD",
+                consensus_confidence=50.0,
+                synthesis_rationale=error_msg,
+                predict_price_5s=[100.0] * 5,
+                predict_price_5m=[100.0] * 5,
+                predict_price_5h=[100.0] * 5,
+                predict_price_5d=[100.0] * 5
+            )
 
 
 def should_awake_agent(agent_code: str, category: str, similar_events: list) -> tuple[bool, str]:
