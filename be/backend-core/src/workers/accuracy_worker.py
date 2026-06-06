@@ -65,8 +65,16 @@ async def evaluate_active_recommendations():
                 if is_closed:
                     rec.status = "CLOSED"
                     rec.realized_return = Decimal(str(round(realized_ret, 2)))
+                    db.commit()
                     
-                db.commit()
+                    # Backpropagate outcome success to the Knowledge Graph edges
+                    try:
+                        from src.services.graph_ingestion import update_relations_from_prediction_outcome
+                        update_relations_from_prediction_outcome(rec, db)
+                    except Exception as kg_err:
+                        print(f"[Accuracy Worker] Failed to update Knowledge Graph outcome weights: {kg_err}")
+                else:
+                    db.commit()
             except Exception as e:
                 print(f"[Accuracy Worker] Error updating recommendation ID {rec.id} ({rec.ticker}): {e}")
                 db.rollback()

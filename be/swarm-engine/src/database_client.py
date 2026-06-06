@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Numeric, text
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Numeric, ForeignKey, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from typing import List, Dict, Any, Optional
 import datetime
@@ -35,6 +35,22 @@ class Asset(Base):
     alpha_outperformance = Column(Numeric(5, 2))
     system_verdict = Column(String(20))
     confidence_level = Column(Numeric(5, 2))
+
+class KnowledgeNode(Base):
+    __tablename__ = "knowledge_nodes"
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), unique=True, nullable=False)
+    entity_type = Column(String(50), nullable=False)
+    description = Column(Text)
+
+class KnowledgeEdge(Base):
+    __tablename__ = "knowledge_edges"
+    id = Column(Integer, primary_key=True)
+    source_node_id = Column(Integer, ForeignKey("knowledge_nodes.id", ondelete="CASCADE"), nullable=False)
+    target_node_id = Column(Integer, ForeignKey("knowledge_nodes.id", ondelete="CASCADE"), nullable=False)
+    relationship_type = Column(String(50), nullable=False)
+    strength = Column(Numeric(4, 2))
+    description = Column(Text)
 
 class NewsEvent(Base):
     __tablename__ = "news_events"
@@ -77,6 +93,64 @@ class DatabaseClient:
             }
         finally:
             db.close()
+            
+    def get_related_knowledge_paths(self, ticker: str) -> List[str]:
+        db = self.SessionLocal()
+        paths = []
+        try:
+            ticker_upper = ticker.upper()
+            # 1. Find asset node
+            asset_node = db.query(KnowledgeNode).filter(
+                KnowledgeNode.name == ticker_upper,
+                KnowledgeNode.entity_type == "ASSET"
+            ).first()
+            
+            if not asset_node:
+                return []
+                
+            # 2. Walk edges within 2-hops
+            direct_edges = db.query(KnowledgeEdge).filter(
+                (KnowledgeEdge.source_node_id == asset_node.id) |
+                (KnowledgeEdge.target_node_id == asset_node.id)
+            ).all()
+            
+            visited_edges = set()
+            
+            for edge in direct_edges:
+                visited_edges.add(edge.id)
+                src = db.query(KnowledgeNode).filter(KnowledgeNode.id == edge.source_node_id).first()
+                tgt = db.query(KnowledgeNode).filter(KnowledgeNode.id == edge.target_node_id).first()
+                if src and tgt:
+                    paths.append(
+                        f"- {src.name} ({src.entity_type}) --[{edge.relationship_type}]--> "
+                        f"{tgt.name} ({tgt.entity_type}) [Strength: {float(edge.strength or 0.50):.2f}]"
+                    )
+                    
+                    # Second hop
+                    neighbor_id = edge.source_node_id if edge.target_node_id == asset_node.id else edge.target_node_id
+                    neighbor_node = src if edge.target_node_id == asset_node.id else tgt
+                    
+                    if neighbor_node and neighbor_node.entity_type in ["SECTOR", "INDICATOR", "ABSTRACT_EVENT"]:
+                        second_edges = db.query(KnowledgeEdge).filter(
+                            (KnowledgeEdge.source_node_id == neighbor_id) |
+                            (KnowledgeEdge.target_node_id == neighbor_id)
+                        ).all()
+                        for s_edge in second_edges:
+                            if s_edge.id not in visited_edges:
+                                visited_edges.add(s_edge.id)
+                                s_src = db.query(KnowledgeNode).filter(KnowledgeNode.id == s_edge.source_node_id).first()
+                                s_tgt = db.query(KnowledgeNode).filter(KnowledgeNode.id == s_edge.target_node_id).first()
+                                if s_src and s_tgt:
+                                    paths.append(
+                                        f"  * Path extension: {s_src.name} ({s_src.entity_type}) --[{s_edge.relationship_type}]--> "
+                                        f"{s_tgt.name} ({s_tgt.entity_type}) [Strength: {float(s_edge.strength or 0.50):.2f}]"
+                                    )
+                                    
+        except Exception as e:
+            print(f"Error querying knowledge paths for {ticker}: {e}")
+        finally:
+            db.close()
+        return paths
 
     def get_similar_past_events(self, query_text: str, query_embedding: Optional[List[float]] = None, limit: int = 3, ticker: Optional[str] = None, current_price: Optional[float] = None) -> List[Dict[str, Any]]:
         db = self.SessionLocal()

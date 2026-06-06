@@ -10,12 +10,12 @@ from src.mock_debate import run_mock_debate
 def retrieve_analogy_node(state: SwarmState) -> dict:
     """
     Retrieves similar historical events from pgvector or SQLite fallback
-    based on the current asset category or vĩ mô topics.
+    and walks the Knowledge Graph within 2-hops centered around the ticker.
     """
     ticker = state["ticker"]
     category = state["category"]
     price = state["current_price"]
-    print(f"[Node: RetrieveAnalogy] Querying historical events correlating with {ticker} ({category})...")
+    print(f"[Node: RetrieveAnalogy] Querying historical events & Knowledge Graph paths for {ticker} ({category})...")
     
     # Query matching keywords
     query_text = "lãi suất" if category == "FOREX" else ("oil" if ticker in ["USO", "CL=F"] else ticker)
@@ -26,7 +26,13 @@ def retrieve_analogy_node(state: SwarmState) -> dict:
         current_price=price
     )
     
-    return {"similar_historical_events": past_events}
+    # Walk the Knowledge Graph
+    paths = db_client.get_related_knowledge_paths(ticker)
+    
+    return {
+        "similar_historical_events": past_events,
+        "knowledge_graph_paths": paths
+    }
 
 
 def specialist_analysis_node(state: SwarmState) -> dict:
@@ -37,6 +43,8 @@ def specialist_analysis_node(state: SwarmState) -> dict:
     category = state["category"]
     price = state["current_price"]
     events_str = json.dumps(state.get("similar_historical_events", []), ensure_ascii=False, indent=2)
+    kg_paths = state.get("knowledge_graph_paths", [])
+    kg_paths_str = "\n".join(kg_paths) if kg_paths else "- No explicit baseline relations mapped."
     
     opinions = {}
     
@@ -74,10 +82,13 @@ def specialist_analysis_node(state: SwarmState) -> dict:
         Category: {category}
         Current Price: {price}
         
+        Knowledge Graph Pathways (Priors & Dependencies):
+        {kg_paths_str}
+        
         Similar Past Events (Context):
         {events_str}
         
-        Based on your specialist persona, evaluate the current price and market environment. Propose your verdict and confidence rating.
+        Based on your specialist persona and the semantic connections above, evaluate the current price and market environment. Propose your verdict and confidence rating.
         """
         
         speech = stream_agent_speech(code, prompt_system, prompt_user)
@@ -196,6 +207,8 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     opinions_str = json.dumps([op.dict() for op in state["opinions"].values()], ensure_ascii=False)
     debate_str = json.dumps([d.dict() for d in state["debate_history"]], ensure_ascii=False)
     risk_str = json.dumps(state["risk_profile"], ensure_ascii=False)
+    kg_paths = state.get("knowledge_graph_paths", [])
+    kg_paths_str = "\n".join(kg_paths) if kg_paths else "- No baseline relations."
     
     code = "MOD_O"
     persona = AGENT_PERSONAS[code]
@@ -204,6 +217,10 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     
     prompt_user = f"""
     Ticker: {ticker}
+    
+    Knowledge Graph Paths (Priors & Sector Relationships):
+    {kg_paths_str}
+    
     Round 1 Opinions: {opinions_str}
     Round 2 Debate: {debate_str}
     Risk Assessment: {risk_str}

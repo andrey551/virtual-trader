@@ -4,6 +4,7 @@ from src.database import SessionLocal
 from src.services.mcp_client import mcp_client
 from src.models.event import NewsEvent, EventAssetImpact
 from src.workers.accuracy_worker import evaluate_active_recommendations
+from src.services.graph_ingestion import ingest_news_to_abstract_event, decay_graph_edges
 from decimal import Decimal
 import datetime
 import asyncio
@@ -49,6 +50,12 @@ async def fetch_and_save_news(query: str):
                 db.commit()
                 db.refresh(event)
                 
+                # Ingest news event class into the Knowledge Graph asynchronously
+                try:
+                    await ingest_news_to_abstract_event(event, db)
+                except Exception as kg_e:
+                    print(f"[News Worker] Failed to ingest event into Knowledge Graph: {kg_e}")
+                
                 # Iterate and link affected assets dynamically based on keywords
                 impacted = art.get("impactedAssets", [])
                 for ticker in impacted:
@@ -83,6 +90,14 @@ async def scan_all_topics():
         # Brief pause between calls to mitigate IP rate-limiting issues
         await asyncio.sleep(2)
 
+async def run_daily_decay():
+    print("[News Worker] Starting scheduled graph base-weight decay cycle...")
+    db = SessionLocal()
+    try:
+        decay_graph_edges(db)
+    finally:
+        db.close()
+
 scheduler = AsyncIOScheduler()
 
 def start_scheduler():
@@ -90,8 +105,9 @@ def start_scheduler():
         # Set up recurring interval triggers
         scheduler.add_job(scan_all_topics, "interval", seconds=60, id="news_scanner_job", replace_existing=True)
         scheduler.add_job(evaluate_active_recommendations, "interval", seconds=30, id="accuracy_eval_job", replace_existing=True)
+        scheduler.add_job(run_daily_decay, "interval", hours=24, id="graph_decay_job", replace_existing=True)
         scheduler.start()
-        print("AsyncIOScheduler background worker initiated successfully with news and accuracy jobs.")
+        print("AsyncIOScheduler background worker initiated successfully with news, accuracy, and decay jobs.")
 
 def shutdown_scheduler():
     if scheduler.running:

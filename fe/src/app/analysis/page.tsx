@@ -12,10 +12,12 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
-  Search
+  Search,
+  Network
 } from "lucide-react";
 
 import DynamicChart from "./DynamicChart";
+import KnowledgeGraphVisualizer from "@/components/KnowledgeGraphVisualizer";
 import { BACKEND_URL, WS_URL } from "../../config";
 
 interface ChartCandle {
@@ -55,6 +57,7 @@ function AnalyticsContent() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>([]);
+  const [bottomTab, setBottomTab] = useState<"fundamental" | "knowledge">("fundamental");
   
   const [selectedAsset, setSelectedAsset] = useState<AnalyticsAsset>({
     id: "loading",
@@ -103,6 +106,7 @@ function AnalyticsContent() {
     setLiveStatus("SYS_ACTIVE");
     setSelectedInterval("1d");
     setSelectedPeriod("3mo");
+    setBottomTab("fundamental");
   }
 
   interface ApiAssetSummary {
@@ -562,21 +566,57 @@ function AnalyticsContent() {
       {/* Bottom Grid: split 2 columns (Left: Fundamental Audit; Right: stats and events) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Column: Fundamental Audit */}
+        {/* Left Column: Tabbed Panel (Fundamental Audit / Knowledge Graph) */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-zinc-700 flex items-center gap-2 border-b border-[#ebdcb9]/40 pb-3 mb-2">
-              <FileText className="w-4 h-4 text-amber-600" />
-              Fundamental & Macro Factor Audit
-            </h3>
-            <ul className="space-y-3">
-              {selectedAsset.fundamentalReasons.map((reason: string, idx: number) => (
-                <li key={idx} className="flex gap-3 text-xs text-zinc-600 leading-relaxed items-start">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0 mt-1.5"></span>
-                  <span>{reason}</span>
-                </li>
-              ))}
-            </ul>
+          <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-6">
+            
+            {/* Tab Header bar */}
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3 mb-2 select-none">
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={() => setBottomTab("fundamental")}
+                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                    bottomTab === "fundamental"
+                      ? "text-amber-800 border-amber-600"
+                      : "text-zinc-400 border-transparent hover:text-zinc-650"
+                  }`}
+                >
+                  <FileText className="w-4 h-4" />
+                  Fundamental Audit
+                </button>
+                <button
+                  onClick={() => setBottomTab("knowledge")}
+                  className={`flex items-center gap-2 pb-2.5 text-xs font-mono font-bold uppercase tracking-wider border-b-2 transition-all cursor-pointer ${
+                    bottomTab === "knowledge"
+                      ? "text-amber-800 border-amber-600"
+                      : "text-zinc-400 border-transparent hover:text-zinc-650"
+                  }`}
+                >
+                  <Network className="w-4 h-4" />
+                  Consensus Knowledge Network
+                </button>
+              </div>
+              
+              <span className="text-[9px] font-mono text-zinc-400 uppercase tracking-widest hidden sm:inline">
+                {bottomTab === "fundamental" ? "FACTOR_INTELLIGENCE" : "RELATIONAL_MULTIGRAPH"}
+              </span>
+            </div>
+
+            {/* Tab content */}
+            {bottomTab === "fundamental" ? (
+              <ul className="space-y-3">
+                {selectedAsset.fundamentalReasons.map((reason: string, idx: number) => (
+                  <li key={idx} className="flex gap-3 text-xs text-zinc-600 leading-relaxed items-start">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0 mt-1.5"></span>
+                    <span>{reason}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="animate-fadeIn">
+                <KnowledgeGraphVisualizer ticker={selectedAsset.symbol} />
+              </div>
+            )}
           </div>
         </div>
 

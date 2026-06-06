@@ -119,3 +119,15 @@ python src/main.py --ticker BTC-USD --price 67250.45 --category CRYPTO
 
 ## 🔧 Tự Động Hóa CI Pipeline
 Tệp workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) tự động kích hoạt trên GitHub để kiểm tra linter và build thử nghiệm Next.js/FastAPI/Docker, đảm bảo chất lượng tích hợp liên tục trước khi phát hành.
+
+---
+
+## 🧠 Mạng Lưới Đồ Thị Tri Thức Đa Quan Hệ (Multi-Relation Knowledge Graph)
+
+Hệ thống tích hợp một **Mạng lưới Đồ thị Tri thức Đa quan hệ (Multigraph)** để lưu trữ các thực thể thị trường (Asset, Sector, Macro Indicator, Abstract Event) và liên kết lập luận của AI agents:
+
+1. **Lập Luận Phản Biện (Semantic Graph Traversal)**: Khi phân tích một mã tài sản, Swarm Engine sẽ duyệt đồ thị tri thức trong bán kính 2 bước (2-hops) để tìm các mối liên hệ vĩ mô phức tạp (ví dụ: `AAPL -> SUPPLIES -> Taiwan Semiconductor`, `Inflation -> INFLUENCES -> Interest Rates -> DEPRESSES -> Tech Sector`).
+2. **Quy Trình Nạp Sự Kiện Trừu Tượng (Abstract Event Ingestion)**: Khi cào được tin tức mới, AI sẽ tự động phân loại sự kiện cụ thể thành một **Sự kiện Trừu tượng (Abstract Event Class)** như `Energy Supply Shock` hay `Monetary Policy Action`, sau đó cập nhật trọng số các liên kết liên quan bằng công thức **Exponential Moving Average (EMA)**.
+3. **Cơ Chế Học Luỹ Kế (Backpropagation Feedback Loop)**: Khi các khuyến nghị chốt (CLOSED) thành công hoặc thất bại, hệ thống tự động điều chỉnh tăng/giảm trọng số liên kết tương ứng trên đồ thị (ví dụ: nếu dự báo giảm đúng khi có `Energy Supply Shock`, mối quan hệ `Energy Supply Shock -> DEPRESSES -> Sector` được củng cố tăng sức mạnh liên kết).
+4. **Tự Động Settle/Decay**: Định kỳ mỗi 24 giờ, trọng số của các liên kết tạm thời do tin tức đột xuất sẽ tự động phân rã (decay) 5% để trở về mức cơ sở ổn định trong lịch sử (`historical_base_weight`).
+

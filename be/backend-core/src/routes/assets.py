@@ -99,6 +99,13 @@ def seed_assets_if_empty(db: Session):
         ]
         db.add_all(mock_assets)
         db.commit()
+        
+        # Seed Knowledge Graph baseline nodes and relations
+        try:
+            from src.routes.knowledge_graph import seed_knowledge_graph
+            seed_knowledge_graph(db)
+        except Exception as kg_se_e:
+            print(f"[Database] Warning: Failed to seed Knowledge Graph: {kg_se_e}")
 
 def seed_recommendations_if_empty(db: Session):
     """

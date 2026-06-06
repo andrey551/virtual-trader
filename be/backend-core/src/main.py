@@ -7,7 +7,7 @@ from prometheus_client import make_asgi_app
 
 from src.config import settings
 from src.database import engine, Base
-from src.routes import assets, events, recommendations, mcp_bridge
+from src.routes import assets, events, recommendations, mcp_bridge, knowledge_graph
 from src.services.mcp_client import mcp_client
 from src.workers.news_scheduler import start_scheduler, shutdown_scheduler
 from src.metrics import (
@@ -37,6 +37,7 @@ from src.models.event import NewsEvent, EventAssetImpact
 from src.models.recommendation import Recommendation
 from src.models.debate import AgentDebate
 from src.models.prediction_cache import PredictionCache
+from src.models.knowledge_graph import KnowledgeNode, KnowledgeEdge
 
 Base.metadata.create_all(bind=engine)
 
@@ -109,6 +110,7 @@ app.include_router(assets.router, prefix=settings.API_V1_STR)
 app.include_router(events.router, prefix=settings.API_V1_STR)
 app.include_router(recommendations.router, prefix=settings.API_V1_STR)
 app.include_router(mcp_bridge.router, prefix=settings.API_V1_STR)
+app.include_router(knowledge_graph.router, prefix=settings.API_V1_STR)
 
 @app.get("/")
 def read_root():

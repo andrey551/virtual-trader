@@ -21,6 +21,7 @@ class SwarmState(TypedDict):
     current_price: float
     market_data: Dict[str, Any]
     similar_historical_events: List[Dict[str, Any]]
+    knowledge_graph_paths: List[str]
     opinions: Dict[str, AgentOpinion]
     debate_history: List[DebateMessage]
     risk_profile: Dict[str, Any]
