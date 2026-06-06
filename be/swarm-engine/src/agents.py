@@ -1,10 +1,33 @@
 import os
 import sys
 import json
+from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
 from langchain_google_genai import ChatGoogleGenerativeAI
 from src.config import GEMINI_API_KEY, GEMINI_FLASH_MODEL, GEMINI_PRO_MODEL
 from src.personas import AGENT_PERSONAS
 from src.state import SwarmState, AgentOpinion, DebateMessage
+
+# Define structured Pydantic output models for Gemini
+class AnalystOutput(BaseModel):
+    verdict: str = Field(description="Final verdict for the asset. Must be exactly one of: STRONG_BUY, BUY, HOLD, SELL, or STRONG_SELL.")
+    confidence: float = Field(description="Confidence rating for this verdict as a percentage from 0.0 to 100.0.")
+    analysis: str = Field(description="Detailed analysis of technical charts, fundamentals, sentiment, or indicators depending on your persona.")
+    key_argument: str = Field(description="A concise 1-sentence summary of your main reason for the verdict, used for state reduction.")
+    counter_arguments: str = Field(description="Critique, rebuttal, or feedback addressing other specialists, if in Round 2, else empty string.")
+
+class RiskManagerOutput(BaseModel):
+    entry_zone_min: float = Field(description="Recommended lower limit of the entry range price.")
+    entry_zone_max: float = Field(description="Recommended upper limit of the entry range price.")
+    target_price: float = Field(description="Recommended take-profit target price.")
+    stop_loss: float = Field(description="Recommended protective stop-loss price.")
+    risk_verdict: str = Field(description="Defensive risk management recommendation (e.g. DEFENSIVE_HOLD, RISK_APPROVED).")
+    risk_analysis: str = Field(description="Detailed risk management reasoning, volatility analysis, and sizing logic.")
+
+class ModeratorOutput(BaseModel):
+    consensus_verdict: str = Field(description="Final synthesized consensus verdict. Must be exactly one of: STRONG_BUY, BUY, HOLD, SELL, or STRONG_SELL.")
+    consensus_confidence: float = Field(description="Synthesized consensus confidence level from 0.0 to 100.0.")
+    synthesis_rationale: str = Field(description="Detailed consensus reasoning synthesizing Round 1 and Round 2 viewpoints.")
 
 # Initialize Gemini Chat LLMs safely if key is available
 llm_flash = None
@@ -106,6 +129,118 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
     sys.stdout.flush()
 
     return full_text
+
+
+def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_user: str, output_schema):
+    """
+    Invokes the Gemini API using structured output with a Pydantic schema.
+    Returns the parsed Pydantic object, while simulating typewriter streaming to stdout for UX compatibility.
+    """
+    import time
+    persona = AGENT_PERSONAS[agent_code]
+    agent_name = persona["name"]
+    avatar = persona["avatar_code"]
+    
+    # 1. Print TYPING
+    print(json.dumps({
+        "agent_name": agent_name,
+        "avatar_code": avatar,
+        "message": "",
+        "status": "TYPING"
+    }))
+    sys.stdout.flush()
+    
+    llm = llm_pro if agent_code == "MOD_O" else llm_flash
+    if not llm:
+        raise ValueError("Gemini API Client is not initialized. Please configure GEMINI_API_KEY.")
+        
+    messages = [
+        ("system", prompt_system),
+        ("user", prompt_user)
+    ]
+    
+    try:
+        # Wrap the LLM with structured output schema
+        structured_llm = llm.with_structured_output(output_schema)
+        result = structured_llm.invoke(messages)
+        
+        # Extract the appropriate text field to stream chunk-by-chunk for the frontend
+        text_to_stream = ""
+        if hasattr(result, "analysis"):
+            text_to_stream = result.analysis
+            if getattr(result, "counter_arguments", ""):
+                text_to_stream += "\n\n**Counter Arguments & Critiques:**\n" + result.counter_arguments
+        elif hasattr(result, "risk_analysis"):
+            text_to_stream = result.risk_analysis
+        elif hasattr(result, "synthesis_rationale"):
+            text_to_stream = result.synthesis_rationale
+            
+        # Simulate chunk streaming to stdout for the WebSocket consumer
+        chunk_size = 8
+        for i in range(0, len(text_to_stream), chunk_size):
+            chunk = text_to_stream[i:i+chunk_size]
+            print(json.dumps({
+                "agent_name": agent_name,
+                "avatar_code": avatar,
+                "message_chunk": chunk,
+                "status": "SPEAKING"
+            }))
+            sys.stdout.flush()
+            time.sleep(0.015) # 15ms typewriter delay
+            
+        # 2. Print COMPLETED
+        print(json.dumps({
+            "agent_name": agent_name,
+            "avatar_code": avatar,
+            "message": text_to_stream,
+            "status": "COMPLETED"
+        }))
+        sys.stdout.flush()
+        
+        # 3. Print METRICS
+        prompt_tokens = max(1, len(prompt_system + prompt_user) // 4)
+        completion_tokens = max(1, len(text_to_stream) // 4)
+        total_tokens = prompt_tokens + completion_tokens
+        model_name = GEMINI_PRO_MODEL if agent_code == "MOD_O" else GEMINI_FLASH_MODEL
+        
+        print(json.dumps({
+            "type": "metrics",
+            "agent_name": agent_name,
+            "event": "awake",
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "model": model_name
+        }))
+        sys.stdout.flush()
+        
+        return result
+        
+    except Exception as e:
+        # Handle failures gracefully by falling back to text error blocks
+        error_msg = f"[Error in structured Gemini call: {str(e)}]"
+        print(json.dumps({
+            "agent_name": agent_name,
+            "avatar_code": avatar,
+            "message_chunk": error_msg,
+            "status": "SPEAKING"
+        }))
+        sys.stdout.flush()
+        print(json.dumps({
+            "agent_name": agent_name,
+            "avatar_code": avatar,
+            "message": error_msg,
+            "status": "COMPLETED"
+        }))
+        sys.stdout.flush()
+        
+        # Return fallback Pydantic objects depending on schema
+        if output_schema == AnalystOutput:
+            return AnalystOutput(verdict="HOLD", confidence=50.0, analysis=error_msg, key_argument="API error fallback", counter_arguments="")
+        elif output_schema == RiskManagerOutput:
+            return RiskManagerOutput(entry_zone_min=0.0, entry_zone_max=0.0, target_price=0.0, stop_loss=0.0, risk_verdict="HOLD", risk_analysis=error_msg)
+        else:
+            return ModeratorOutput(consensus_verdict="HOLD", consensus_confidence=50.0, synthesis_rationale=error_msg)
 
 
 def should_awake_agent(agent_code: str, category: str, similar_events: list) -> tuple[bool, str]:

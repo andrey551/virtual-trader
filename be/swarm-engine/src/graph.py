@@ -3,14 +3,22 @@ import sys
 from langgraph.graph import StateGraph, END
 from src.state import SwarmState, AgentOpinion, DebateMessage
 from src.personas import AGENT_PERSONAS
-from src.agents import stream_agent_speech, GEMINI_API_KEY, should_awake_agent
+from src.agents import (
+    stream_agent_speech,
+    stream_structured_agent_speech,
+    AnalystOutput,
+    RiskManagerOutput,
+    ModeratorOutput,
+    GEMINI_API_KEY,
+    should_awake_agent
+)
 from src.database_client import db_client
 from src.mock_debate import run_mock_debate
 
 def retrieve_analogy_node(state: SwarmState) -> dict:
     """
-    Retrieves similar historical events from pgvector or SQLite fallback
-    and walks the Knowledge Graph within 2-hops centered around the ticker.
+    Retrieves similar historical events from pgvector or SQLite fallback,
+    calculates live technical indicators, and walks the Knowledge Graph within 2-hops.
     """
     ticker = state["ticker"]
     category = state["category"]
@@ -29,15 +37,19 @@ def retrieve_analogy_node(state: SwarmState) -> dict:
     # Walk the Knowledge Graph
     paths = db_client.get_related_knowledge_paths(ticker)
     
+    # Calculate live technical indicators
+    indicators = db_client.calculate_technical_indicators(ticker)
+    
     return {
         "similar_historical_events": past_events,
-        "knowledge_graph_paths": paths
+        "knowledge_graph_paths": paths,
+        "market_indicators": indicators
     }
 
 
 def specialist_analysis_node(state: SwarmState) -> dict:
     """
-    Executes independent rounds of specialist analysis (Round 1)
+    Executes independent rounds of specialist analysis (Round 1) using structured output.
     """
     ticker = state["ticker"]
     category = state["category"]
@@ -46,6 +58,20 @@ def specialist_analysis_node(state: SwarmState) -> dict:
     kg_paths = state.get("knowledge_graph_paths", [])
     kg_paths_str = "\n".join(kg_paths) if kg_paths else "- No explicit baseline relations mapped."
     
+    # Format computed technical indicators
+    indicators = state.get("market_indicators", {})
+    if indicators and indicators.get("status") == "SUCCESS":
+        indicators_str = (
+            f"- Current Price: {indicators['price']}\n"
+            f"- 24h Change Percent: {indicators['change_percent']}%\n"
+            f"- RSI (14-period): {indicators['rsi']} (Interpretation: {'Oversold' if indicators['rsi'] < 30 else 'Overbought' if indicators['rsi'] > 70 else 'Neutral'})\n"
+            f"- MACD: Line={indicators['macd_line']}, Signal={indicators['macd_signal']}, Histogram={indicators['macd_hist']} ({indicators['macd_verdict']})\n"
+            f"- 50-day SMA: {indicators['sma_50']} ({indicators['sma_50_verdict']})\n"
+            f"- 24h Trading Volume: {indicators['volume_24h']:,} (vs 50-day average: {indicators['volume_avg_50d']:,}, Surge Ratio: {indicators['volume_surge_ratio']}x)"
+        )
+    else:
+        indicators_str = "- No live technical indicators telemetry available (using default fallbacks)."
+
     opinions = {}
     
     # Select active specialist codes based on asset category
@@ -75,12 +101,15 @@ def specialist_analysis_node(state: SwarmState) -> dict:
             continue
             
         persona = AGENT_PERSONAS[code]
-        prompt_system = f"System Instruction: {persona['prompt']} Your name is {persona['name']}. Always express a verdict (BUY, SELL, or HOLD), confidence level (0 to 100) and rationale."
+        prompt_system = f"System Instruction: {persona['prompt']} Your name is {persona['name']}."
         
         prompt_user = f"""
         Asset: {ticker}
         Category: {category}
         Current Price: {price}
+        
+        Live Technical Indicators & Market Telemetry:
+        {indicators_str}
         
         Knowledge Graph Pathways (Priors & Dependencies):
         {kg_paths_str}
@@ -88,57 +117,55 @@ def specialist_analysis_node(state: SwarmState) -> dict:
         Similar Past Events (Context):
         {events_str}
         
-        Based on your specialist persona and the semantic connections above, evaluate the current price and market environment. Propose your verdict and confidence rating.
+        Based on your specialist persona, computed indicators, and the semantic connections above, evaluate the current price and market environment. Propose your verdict and confidence rating.
         """
         
-        speech = stream_agent_speech(code, prompt_system, prompt_user)
+        # Enforce structured output using stream_structured_agent_speech
+        structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, AnalystOutput)
         
-        # Simple parser to extract verdict & confidence from LLM output
-        verdict = "HOLD"
-        if "STRONG BUY" in speech.upper() or "STRONG_BUY" in speech.upper():
-            verdict = "STRONG_BUY"
-        elif "BUY" in speech.upper():
-            verdict = "BUY"
-        elif "STRONG SELL" in speech.upper() or "STRONG_SELL" in speech.upper():
-            verdict = "STRONG_SELL"
-        elif "SELL" in speech.upper():
-            verdict = "SELL"
-            
-        confidence = 50.0
-        for word in speech.split():
-            if "%" in word:
-                try:
-                    val = float(word.replace("%", "").replace("(", "").replace(")", "").strip())
-                    if 0 < val <= 100:
-                        confidence = val
-                        break
-                except ValueError:
-                    pass
-                    
         opinions[code] = AgentOpinion(
             agent_name=persona["name"],
-            verdict=verdict,
-            confidence=confidence,
-            rationale=speech[:500],  # store summary
-            indicators_audited=[category, "News Match"]
+            verdict=structured_out.verdict,
+            confidence=structured_out.confidence,
+            rationale=structured_out.analysis,
+            key_argument=structured_out.key_argument,
+            indicators_audited=[category, "News Match", "Structured Technical Indicators"]
         )
         
     return {"opinions": opinions}
 
 def swarm_debate_node(state: SwarmState) -> dict:
     """
-    Executes a round of cross-criticism and debate (Round 2)
+    Executes a round of cross-criticism and debate (Round 2) using structured output and state reduction.
     """
     ticker = state["ticker"]
+    category = state["category"]
+    price = state["current_price"]
+    
+    # State Reduction: format condensed summaries of Round 1 opinions to save tokens
     opinions_str = ""
     for code, op in state["opinions"].items():
-        opinions_str += f"- {op.agent_name} Verdict: {op.verdict} (Confidence: {op.confidence}%). Rationale: {op.rationale}\n"
+        opinions_str += f"- {op.agent_name}: {op.verdict} ({op.confidence}% confidence) - Key Argument: {op.key_argument}\n"
+        
+    # Format computed technical indicators to maintain context in Round 2
+    indicators = state.get("market_indicators", {})
+    if indicators and indicators.get("status") == "SUCCESS":
+        indicators_str = (
+            f"- Current Price: {indicators['price']}\n"
+            f"- 24h Change Percent: {indicators['change_percent']}%\n"
+            f"- RSI (14-period): {indicators['rsi']}\n"
+            f"- MACD: Line={indicators['macd_line']}, Signal={indicators['macd_signal']}, Histogram={indicators['macd_hist']} ({indicators['macd_verdict']})\n"
+            f"- 50-day SMA: {indicators['sma_50']} ({indicators['sma_50_verdict']})\n"
+            f"- Volume: {indicators['volume_24h']:,} (vs 50-day average: {indicators['volume_avg_50d']:,})"
+        )
+    else:
+        indicators_str = "- No live indicators telemetry."
         
     debate_history = []
     
     # Let 3 core specialists argue (Technical, Fundamental/Macro, and Sentiment)
     debaters = ["TECH_A", "SENT_A"]
-    if state["category"].upper() == "CRYPTO":
+    if category.upper() == "CRYPTO":
         debaters.append("CRYPTO_A")
     else:
         debaters.append("MACRO_A")
@@ -148,32 +175,63 @@ def swarm_debate_node(state: SwarmState) -> dict:
     
     for code in debaters:
         persona = AGENT_PERSONAS[code]
-        prompt_system = f"System Instruction: {persona['prompt']} You are entering Round 2 of the Swarm Debate. You must critique, agree, or disagree with the opinions of the other agents. Be conversational and references other agents by name."
+        prompt_system = (
+            f"System Instruction: {persona['prompt']} "
+            "You are entering Round 2 of the Swarm Debate. You must critique, agree, or disagree with the opinions of the other agents converse-style. "
+            "Do NOT simply rephrase or repeat your own analysis or arguments from Round 1. Focus on addressing disagreements, key arguments, or limitations raised by other agents. "
+            "Reference other agents by name (e.g. 'Technical Analyst'). Keep it concise and debate-focused."
+        )
         
         prompt_user = f"""
-        All Specialist Opinions from Round 1:
+        Asset: {ticker}
+        Category: {category}
+        Current Price: {price}
+        
+        Live Technical Indicators:
+        {indicators_str}
+        
+        All Specialist Opinions from Round 1 (Summary List):
         {opinions_str}
         
         Write your debate entry responding to these opinions. Direct your comments to specific agents if you disagree or want to reinforce their points.
         """
         
-        speech = stream_agent_speech(code, prompt_system, prompt_user)
+        structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, AnalystOutput)
+        
         debate_history.append(DebateMessage(
             agent_name=persona["name"],
             avatar_code=persona["avatar_code"],
-            message=speech
+            message=structured_out.counter_arguments or structured_out.analysis
         ))
         
     return {"debate_history": debate_history}
 
 def risk_assessment_node(state: SwarmState) -> dict:
     """
-    Invokes the Risk Manager to audit consensus and recommend safe SL / TP levels
+    Invokes the Risk Manager to audit consensus and recommend safe SL / TP levels using structured output.
     """
     ticker = state["ticker"]
     price = state["current_price"]
-    opinions_str = json.dumps([op.dict() for op in state["opinions"].values()], ensure_ascii=False)
     
+    # State Reduction: format condensed summaries of Round 1 opinions to save tokens
+    opinions_str = ""
+    for code, op in state["opinions"].items():
+        opinions_str += f"- {op.agent_name}: {op.verdict} ({op.confidence}% confidence) - Key Argument: {op.key_argument}\n"
+        
+    # Format computed technical indicators to maintain context
+    indicators = state.get("market_indicators", {})
+    if indicators and indicators.get("status") == "SUCCESS":
+        indicators_str = (
+            f"- Current Price: {indicators['price']}\n"
+            f"- 24h Change Percent: {indicators['change_percent']}%\n"
+            f"- RSI (14-period): {indicators['rsi']}\n"
+            f"- MACD: Line={indicators['macd_line']}, Signal={indicators['macd_signal']}, Histogram={indicators['macd_hist']} ({indicators['macd_verdict']})\n"
+            f"- 50-day SMA: {indicators['sma_50']} ({indicators['sma_50_verdict']})\n"
+            f"- Volume: {indicators['volume_24h']:,} (vs 50-day average: {indicators['volume_avg_50d']:,})"
+        )
+    else:
+        indicators_str = "- No live indicators telemetry."
+        
     code = "RISK_M"
     persona = AGENT_PERSONAS[code]
     
@@ -181,19 +239,25 @@ def risk_assessment_node(state: SwarmState) -> dict:
     prompt_user = f"""
     Asset: {ticker}
     Current Price: {price}
-    Specialist Opinions: {opinions_str}
     
-    Provide your risk audit, calculating the Entry zone, Target Profit (TP), and Stop Loss (SL) boundaries. Return the risk profile clearly.
+    Live Technical Indicators:
+    {indicators_str}
+    
+    Specialist Opinions (Summary List):
+    {opinions_str}
+    
+    Provide your risk audit, calculating the Entry zone range, Target Profit (TP), and Stop Loss (SL) boundaries. Return the risk profile clearly as structured output.
     """
     
-    speech = stream_agent_speech(code, prompt_system, prompt_user)
+    structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, RiskManagerOutput)
     
-    # Mock bounds from speech or fallback math
     risk_profile = {
-        "entry": price * 0.99,
-        "target": price * 1.12,
-        "stop_loss": price * 0.94,
-        "rationale": speech[:300]
+        "entry": structured_out.entry_zone_max,
+        "entry_range": f"{structured_out.entry_zone_min:.2f} - {structured_out.entry_zone_max:.2f}",
+        "target": structured_out.target_price,
+        "stop_loss": structured_out.stop_loss,
+        "risk_verdict": structured_out.risk_verdict,
+        "rationale": structured_out.risk_analysis
     }
     
     return {"risk_profile": risk_profile}
@@ -201,10 +265,30 @@ def risk_assessment_node(state: SwarmState) -> dict:
 def consensus_moderator_node(state: SwarmState) -> dict:
     """
     Invokes the Swarm Moderator (Gemini 1.5 Pro) to synthesize the debate
-    and output the final Verdict and confidence rating.
+    and output the final Verdict and confidence rating using structured output.
     """
     ticker = state["ticker"]
-    opinions_str = json.dumps([op.dict() for op in state["opinions"].values()], ensure_ascii=False)
+    price = state["current_price"]
+    
+    # State Reduction: format condensed summaries of Round 1 opinions to save tokens
+    opinions_str = ""
+    for code, op in state["opinions"].items():
+        opinions_str += f"- {op.agent_name}: {op.verdict} ({op.confidence}% confidence) - Key Argument: {op.key_argument}\n"
+        
+    # Format computed technical indicators to maintain context
+    indicators = state.get("market_indicators", {})
+    if indicators and indicators.get("status") == "SUCCESS":
+        indicators_str = (
+            f"- Current Price: {indicators['price']}\n"
+            f"- 24h Change Percent: {indicators['change_percent']}%\n"
+            f"- RSI (14-period): {indicators['rsi']}\n"
+            f"- MACD: Line={indicators['macd_line']}, Signal={indicators['macd_signal']}, Histogram={indicators['macd_hist']} ({indicators['macd_verdict']})\n"
+            f"- 50-day SMA: {indicators['sma_50']} ({indicators['sma_50_verdict']})\n"
+            f"- Volume: {indicators['volume_24h']:,} (vs 50-day average: {indicators['volume_avg_50d']:,})"
+        )
+    else:
+        indicators_str = "- No live indicators telemetry."
+        
     debate_str = json.dumps([d.dict() for d in state["debate_history"]], ensure_ascii=False)
     risk_str = json.dumps(state["risk_profile"], ensure_ascii=False)
     kg_paths = state.get("knowledge_graph_paths", [])
@@ -213,47 +297,35 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     code = "MOD_O"
     persona = AGENT_PERSONAS[code]
     
-    prompt_system = f"System Instruction: {persona['prompt']} Your output must contain a final summary of the swarm consensus, a final recommendation score (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL), and a final confidence score (0 to 100)."
+    prompt_system = f"System Instruction: {persona['prompt']}"
     
     prompt_user = f"""
     Ticker: {ticker}
+    Current Price: {price}
+    
+    Live Technical Indicators:
+    {indicators_str}
     
     Knowledge Graph Paths (Priors & Sector Relationships):
     {kg_paths_str}
     
-    Round 1 Opinions: {opinions_str}
-    Round 2 Debate: {debate_str}
-    Risk Assessment: {risk_str}
+    Round 1 Opinions (Summary List):
+    {opinions_str}
     
-    Synthesize all arguments. Give a final unified recommendation verdict (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL) and a confidence percentage (0 to 100).
+    Round 2 Debate:
+    {debate_str}
+    
+    Risk Assessment:
+    {risk_str}
+    
+    Synthesize all arguments. Give a final unified recommendation verdict (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL) and a confidence percentage (0.0 to 100.0) as structured output.
     """
     
-    speech = stream_agent_speech(code, prompt_system, prompt_user)
+    structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, ModeratorOutput)
     
-    verdict = "HOLD"
-    if "STRONG_BUY" in speech or "STRONG BUY" in speech.upper():
-        verdict = "STRONG_BUY"
-    elif "BUY" in speech.upper():
-        verdict = "BUY"
-    elif "STRONG_SELL" in speech or "STRONG SELL" in speech.upper():
-        verdict = "STRONG_SELL"
-    elif "SELL" in speech.upper():
-        verdict = "SELL"
-        
-    confidence = 50.0
-    for word in speech.split():
-        if "%" in word:
-            try:
-                val = float(word.replace("%", "").replace("(", "").replace(")", "").strip())
-                if 0 < val <= 100:
-                    confidence = val
-                    break
-            except ValueError:
-                pass
-                
     return {
-        "consensus_verdict": verdict,
-        "consensus_confidence": confidence
+        "consensus_verdict": structured_out.consensus_verdict,
+        "consensus_confidence": structured_out.consensus_confidence
     }
 
 def create_swarm_graph() -> StateGraph:

@@ -322,4 +322,117 @@ class DatabaseClient:
             
         return results
 
+    def calculate_technical_indicators(self, ticker: str) -> Dict[str, Any]:
+        """
+        Calculates key market indicators (RSI, MACD, 50-day SMA, Volume, etc.)
+        for the given ticker using yfinance.
+        """
+        import pandas as pd
+        import numpy as np
+        import yfinance as yf
+        
+        print(f"[Indicators Engine] Computing metrics for {ticker}...")
+        
+        # Default fallback indicators
+        default_indicators = {
+            "price": 0.0,
+            "change_percent": 0.0,
+            "rsi": 50.0,
+            "macd_line": 0.0,
+            "macd_signal": 0.0,
+            "macd_hist": 0.0,
+            "macd_verdict": "Neutral",
+            "sma_50": 0.0,
+            "sma_50_verdict": "Neutral",
+            "volume_24h": 0.0,
+            "volume_avg_50d": 0.0,
+            "volume_surge_ratio": 1.0,
+            "status": "FALLBACK"
+        }
+        
+        try:
+            t = yf.Ticker(ticker)
+            # Fetch 3 months of daily candle data to cover 50 days SMA
+            df = t.history(period="3mo", interval="1d")
+            
+            if df.empty or len(df) < 15:
+                print(f"[Indicators Engine] Warning: Not enough candle data for {ticker}. Using fallback indicators.")
+                return default_indicators
+                
+            close_prices = df["Close"]
+            last_price = float(close_prices.iloc[-1])
+            
+            # 1. 24h Change Percent
+            prev_price = float(close_prices.iloc[-2]) if len(close_prices) > 1 else last_price
+            change_pct = ((last_price - prev_price) / prev_price) * 100.0 if prev_price > 0 else 0.0
+            
+            # 2. RSI (14-period)
+            delta = close_prices.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+            
+            rs = gain / (loss + 1e-9)
+            rsi_series = 100 - (100 / (1 + rs))
+            current_rsi = float(rsi_series.iloc[-1]) if not pd.isna(rsi_series.iloc[-1]) else 50.0
+            
+            # 3. MACD (12, 26, 9)
+            ema_12 = close_prices.ewm(span=12, adjust=False).mean()
+            ema_26 = close_prices.ewm(span=26, adjust=False).mean()
+            macd_line = ema_12 - ema_26
+            macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+            macd_hist = macd_line - macd_signal
+            
+            curr_macd = float(macd_line.iloc[-1])
+            curr_signal = float(macd_signal.iloc[-1])
+            curr_hist = float(macd_hist.iloc[-1])
+            
+            # MACD Crossover Verdict
+            macd_verdict = "Neutral"
+            if len(macd_hist) >= 2:
+                prev_hist = float(macd_hist.iloc[-2])
+                if prev_hist <= 0 < curr_hist:
+                    macd_verdict = "Bullish Crossover"
+                elif prev_hist >= 0 > curr_hist:
+                    macd_verdict = "Bearish Crossover"
+                elif curr_hist > 0:
+                    macd_verdict = "Bullish Momentum"
+                elif curr_hist < 0:
+                    macd_verdict = "Bearish Momentum"
+            
+            # 4. SMA (50-period)
+            sma_50_series = close_prices.rolling(window=50).mean()
+            if len(close_prices) < 50:
+                sma_50_series = close_prices.rolling(window=len(close_prices)).mean()
+            curr_sma_50 = float(sma_50_series.iloc[-1]) if not pd.isna(sma_50_series.iloc[-1]) else last_price
+            
+            sma_50_verdict = "Bullish (Above 50 MA)" if last_price > curr_sma_50 else "Bearish (Below 50 MA)"
+            
+            # 5. Volume metrics
+            volume_series = df["Volume"]
+            curr_vol = float(volume_series.iloc[-1])
+            avg_vol = float(volume_series.rolling(window=50).mean().iloc[-1]) if len(volume_series) >= 50 else float(volume_series.mean())
+            surge_ratio = curr_vol / (avg_vol + 1e-9)
+            
+            print(f"[Indicators Engine] Completed calculations for {ticker}: Price={last_price:.2f}, RSI={current_rsi:.2f}, Volume Surge={surge_ratio:.2f}x")
+            
+            return {
+                "price": round(last_price, 4),
+                "change_percent": round(change_pct, 2),
+                "rsi": round(current_rsi, 2),
+                "macd_line": round(curr_macd, 4),
+                "macd_signal": round(curr_signal, 4),
+                "macd_hist": round(curr_hist, 4),
+                "macd_verdict": macd_verdict,
+                "sma_50": round(curr_sma_50, 4),
+                "sma_50_verdict": sma_50_verdict,
+                "volume_24h": int(curr_vol),
+                "volume_avg_50d": int(avg_vol),
+                "volume_surge_ratio": round(surge_ratio, 2),
+                "status": "SUCCESS"
+            }
+            
+        except Exception as e:
+            print(f"[Indicators Engine] Error calculating indicators: {e}")
+            return default_indicators
+
 db_client = DatabaseClient()
