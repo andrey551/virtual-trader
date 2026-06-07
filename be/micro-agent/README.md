@@ -1,0 +1,2 @@
+* MICRO-AGENT
+** Purpose: This is a project that minimize agent token usage into maximum 100 token per request. It should based on modern model of gemini, claude or any other model that minimize token usage. THe different with sub-agent is this agent is not aim to write code and execute very complex logic. It just simply answer based on the context. It should also have context load from database, knowledge graph, API call or any other source. 
