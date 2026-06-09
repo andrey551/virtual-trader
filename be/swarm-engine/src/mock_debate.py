@@ -140,10 +140,14 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
             print(json.dumps({
                 "type": "consensus_forecast",
                 "ticker": ticker,
+                "verdict": "BUY",
+                "confidence": 82.5,
                 "predict_price_5s": p5s,
                 "predict_price_5m": p5m,
                 "predict_price_5h": p5h,
-                "predict_price_5d": p5d
+                "predict_price_5d": p5d,
+                "baseline_trajectory": p5d,
+                "advanced_trajectory": p5d
             }))
             sys.stdout.flush()
 

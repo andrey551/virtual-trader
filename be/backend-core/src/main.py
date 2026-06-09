@@ -302,19 +302,34 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
         if not cache_hit:
             SWARM_CACHE_LOOKUPS.labels(status="miss").inc()
             
-        # Build absolute path to swarm-engine main.py CLI
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
+        use_docker = os.getenv("MCP_USE_DOCKER", "False").lower() in ("true", "1", "yes")
+        if use_docker:
+            # Spawn swarm-engine in its own container on the host docker daemon
+            cmd = [
+                "docker", "run", "-i", "--rm",
+                "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                "--network", "virtual-trader_default",
+                "-e", f"GEMINI_API_KEY={os.getenv('GEMINI_API_KEY', '')}",
+                "-e", f"DATABASE_URL=postgresql://postgres:postgres@db:5432/virtual_trader",
+                "-e", f"MCP_USE_DOCKER={os.getenv('MCP_USE_DOCKER', 'False')}",
+                "virtual-trader-swarm-engine",
+                "--ticker", ticker,
+                "--category", category,
+                "--price", str(price)
+            ]
+        else:
+            # Build absolute path to swarm-engine main.py CLI locally
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
+            cmd = [
+                sys.executable,
+                script_path,
+                "--ticker", ticker,
+                "--category", category,
+                "--price", str(price)
+            ]
         
-        cmd = [
-            sys.executable,
-            script_path,
-            "--ticker", ticker,
-            "--category", category,
-            "--price", str(price)
-        ]
-        
-        print(f"[WebSocket Debate] Spawning swarm-engine CLI subprocess: {' '.join(cmd)}")
+        print(f"[WebSocket Debate] Spawning swarm-engine: {' '.join(cmd)}")
         
         # Propagate GEMINI_API_KEY explicitly to child process environment
         env = os.environ.copy()

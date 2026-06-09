@@ -16,15 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
-# Install python dependencies for both backend-core and swarm-engine
+# Install python dependencies for backend-core
 COPY backend-core/requirements.txt /app/backend-core/requirements.txt
-COPY swarm-engine/requirements.txt /app/swarm-engine/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend-core/requirements.txt
-RUN pip install --no-cache-dir -r /app/swarm-engine/requirements.txt
 
 # Copy source code files into their relative workspaces
 COPY backend-core /app/backend-core
-COPY swarm-engine /app/swarm-engine
 
 # Set working directory to backend-core to run uvicorn
 WORKDIR /app/backend-core

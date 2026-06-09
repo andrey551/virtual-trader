@@ -81,6 +81,30 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
 
+  mcp-math-tools:
+    build:
+      context: ./be/math-tools
+      dockerfile: Dockerfile
+    image: mcp-math-tools
+    profiles:
+      - build-only
+
+  mcp-data-crawler:
+    build:
+      context: ./be/mcp-data-crawler
+      dockerfile: Dockerfile
+    image: mcp-data-crawler
+    profiles:
+      - build-only
+
+  virtual-trader-swarm-engine:
+    build:
+      context: ./be/swarm-engine
+      dockerfile: Dockerfile
+    image: virtual-trader-swarm-engine
+    profiles:
+      - build-only
+
 volumes:
   postgres_data:
   grafana_data:

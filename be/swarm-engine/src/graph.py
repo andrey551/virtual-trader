@@ -1,5 +1,6 @@
 import json
 import sys
+import asyncio
 from langgraph.graph import StateGraph, END
 from src.state import SwarmState, AgentOpinion, DebateMessage
 from src.personas import AGENT_PERSONAS
@@ -14,6 +15,7 @@ from src.agents import (
 )
 from src.database_client import db_client
 from src.mock_debate import run_mock_debate
+from src.mcp_client import MathToolsMCPClient
 
 def retrieve_analogy_node(state: SwarmState) -> dict:
     """
@@ -265,7 +267,8 @@ def risk_assessment_node(state: SwarmState) -> dict:
 def consensus_moderator_node(state: SwarmState) -> dict:
     """
     Invokes the Swarm Moderator (Gemini 1.5 Pro) to synthesize the debate
-    and output the final Verdict and confidence rating using structured output.
+    and output the final Verdict, confidence, momentum and risk multiplier.
+    Then triggers the math-tools MCP server to compute exact quantitative predictions.
     """
     ticker = state["ticker"]
     price = state["current_price"]
@@ -318,36 +321,89 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     Risk Assessment:
     {risk_str}
     
-    Synthesize all arguments and make quantitative price forecasts. In your structured output, provide:
+    Synthesize all arguments and define the qualitative consensus direction. In your structured output, provide:
     1. A final unified recommendation verdict (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL) and a confidence percentage (0.0 to 100.0).
-    2. A trajectory of 5 predicted prices for:
-       - `predict_price_5s`: next 5 seconds (at steps 1s, 2s, 3s, 4s, 5s from now).
-       - `predict_price_5m`: next 5 minutes (at steps 1m, 2m, 3m, 4m, 5m from now).
-       - `predict_price_5h`: next 5 hours (at steps 1h, 2h, 3h, 4h, 5h from now).
-       - `predict_price_5d`: next 5 days (at steps 1d, 2d, 3d, 4d, 5d from now).
-       
-    The trajectories must be mathematically coherent:
-    - Starting from the current price of {price}.
-    - Sloped upward for BUY/STRONG_BUY, downward for SELL/STRONG_SELL, or sideways/rangebound for HOLD.
-    - Logically aiming towards the Risk Manager's target price/stop loss boundaries at the 5-day horizon.
+    2. A momentum direction scalar between -1.0 (strongly bearish) and 1.0 (strongly bullish) representing market momentum.
+    3. A risk multiplier sizing factor between 0.5 and 2.0 based on risk and volatility audit.
+    4. A general volatility outlook (HIGH, MEDIUM, or LOW).
     """
     
     structured_out = stream_structured_agent_speech(code, prompt_system, prompt_user, ModeratorOutput)
     
+    # helper for running async functions from sync contexts safely
+    def run_async(coro):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+            
+        if loop and loop.is_running():
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result()
+        else:
+            return asyncio.run(coro)
+
+    async def get_mcp_forecast():
+        client = MathToolsMCPClient()
+        try:
+            await client.start()
+            forecast_args = {
+                "ticker": ticker,
+                "current_price": float(price),
+                "verdict": structured_out.consensus_verdict,
+                "confidence": float(structured_out.consensus_confidence),
+                "momentum_direction": float(structured_out.momentum_direction),
+                "risk_multiplier": float(structured_out.risk_multiplier),
+                "volatility_outlook": structured_out.volatility_outlook
+            }
+            res = await client.call_predict_trajectory(forecast_args)
+            return res
+        finally:
+            await client.stop()
+
+    print(f"[Graph Moderator] Dispatching qualitative data to math-tools MCP server...")
+    sys.stdout.flush()
+    
+    forecast_res = run_async(get_mcp_forecast())
+    
     # Print consensus forecast structured JSON for backend WebSocket parsing
     try:
-        forecast_data = {
+        if forecast_res.get("status") == "success":
+            forecast_data = {
+                "type": "consensus_forecast",
+                "ticker": ticker,
+                "verdict": structured_out.consensus_verdict,
+                "confidence": structured_out.consensus_confidence,
+                "predict_price_5s": [float(p) for p in forecast_res["predict_price_5s"]],
+                "predict_price_5m": [float(p) for p in forecast_res["predict_price_5m"]],
+                "predict_price_5h": [float(p) for p in forecast_res["predict_price_5h"]],
+                "predict_price_5d": [float(p) for p in forecast_res["predict_price_5d"]],
+                "baseline_trajectory": [float(p) for p in forecast_res["baseline_trajectory"]],
+                "advanced_trajectory": [float(p) for p in forecast_res["advanced_trajectory"]]
+            }
+            print(json.dumps(forecast_data))
+            sys.stdout.flush()
+        else:
+            raise ValueError(forecast_res.get("message", "Unknown MCP forecast failure"))
+    except Exception as fe:
+        print(f"[Graph Error] Failed to compute or parse math forecasts: {fe}", file=sys.stderr)
+        # Fallback trajectory calculations if MCP server fails or raises exception
+        fallback_data = {
             "type": "consensus_forecast",
             "ticker": ticker,
-            "predict_price_5s": [float(p) for p in structured_out.predict_price_5s],
-            "predict_price_5m": [float(p) for p in structured_out.predict_price_5m],
-            "predict_price_5h": [float(p) for p in structured_out.predict_price_5h],
-            "predict_price_5d": [float(p) for p in structured_out.predict_price_5d]
+            "verdict": structured_out.consensus_verdict,
+            "confidence": structured_out.consensus_confidence,
+            "predict_price_5s": [price] * 5,
+            "predict_price_5m": [price] * 5,
+            "predict_price_5h": [price] * 5,
+            "predict_price_5d": [price] * 5,
+            "baseline_trajectory": [price] * 5,
+            "advanced_trajectory": [price] * 5
         }
-        print(json.dumps(forecast_data))
+        print(json.dumps(fallback_data))
         sys.stdout.flush()
-    except Exception as fe:
-        print(f"[Graph Error] Failed to print consensus forecast: {fe}", file=sys.stderr)
     
     return {
         "consensus_verdict": structured_out.consensus_verdict,
