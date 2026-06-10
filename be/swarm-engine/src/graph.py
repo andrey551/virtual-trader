@@ -10,6 +10,7 @@ from src.agents import (
     AnalystOutput,
     RiskManagerOutput,
     ModeratorOutput,
+    ForecastEvaluationOutput,
     GEMINI_API_KEY,
     should_awake_agent
 )
@@ -352,8 +353,8 @@ def consensus_moderator_node(state: SwarmState) -> dict:
             forecast_args = {
                 "ticker": ticker,
                 "current_price": float(price),
-                "verdict": structured_out.consensus_verdict,
-                "confidence": float(structured_out.consensus_confidence),
+                "consensus_verdict": structured_out.consensus_verdict,
+                "consensus_confidence": float(structured_out.consensus_confidence),
                 "momentum_direction": float(structured_out.momentum_direction),
                 "risk_multiplier": float(structured_out.risk_multiplier),
                 "volatility_outlook": structured_out.volatility_outlook
@@ -368,6 +369,52 @@ def consensus_moderator_node(state: SwarmState) -> dict:
     
     forecast_res = run_async(get_mcp_forecast())
     
+    # 3. Swarm Evaluation and Review Node
+    print(f"[Graph Moderator] Evaluating mathematical results via Swarm Review node...")
+    sys.stdout.flush()
+    
+    eval_prompt_system = (
+        "System Instruction: You are the Swarm Moderator. Your task is to perform the final review and evaluation of the mathematical forecasting outputs "
+        "calculated by the quantitative models against the qualitative specialists consensus and the Risk Manager boundaries. "
+        "Address if the mathematical curves are consistent with the general recommendation or if they are overly aggressive/bearish."
+    )
+    
+    # Format forecasts for the evaluator LLM
+    if forecast_res.get("status") == "success":
+        predict_price_5d_str = ", ".join([f"{p:.2f}" for p in forecast_res["predict_price_5d"]])
+        baseline_trajectory_str = ", ".join([f"{p:.2f}" for p in forecast_res["baseline_trajectory"]])
+    else:
+        predict_price_5d_str = "N/A"
+        baseline_trajectory_str = "N/A"
+        
+    eval_prompt_user = f"""
+    Asset Ticker: {ticker}
+    Current price: {price}
+    
+    Risk Boundaries set by Risk Manager:
+    {risk_str}
+    
+    Qualitative Consensus Verdict: {structured_out.consensus_verdict}
+    Consensus Confidence: {structured_out.consensus_confidence}%
+    Momentum Direction: {structured_out.momentum_direction}
+    Risk Multiplier: {structured_out.risk_multiplier}
+    Volatility Outlook: {structured_out.volatility_outlook}
+    
+    Mathematical Projections (Calculated via Math Models):
+    - Baseline 5-day Trajectory: [{baseline_trajectory_str}]
+    - Advanced 5-day Trajectory (Swarm-Adjusted): [{predict_price_5d_str}]
+    
+    Please evaluate the mathematical model results:
+    1. Check if the advanced trajectory correctly moves in the direction of our consensus verdict.
+    2. Check if the trajectory is risk-realistic, especially if it respects or targets the Risk Manager's target profit/stop loss levels.
+    3. Output validation status (VALIDATED, ADJUSTED, or ANOMALY_DETECTED), an evaluation rationale, and any adjustments to the final consensus confidence score.
+    """
+    
+    eval_out = stream_structured_agent_speech(code, eval_prompt_system, eval_prompt_user, ForecastEvaluationOutput)
+    
+    # Adjust final consensus confidence based on math evaluation
+    final_confidence = max(0.0, min(100.0, float(structured_out.consensus_confidence) + float(eval_out.confidence_adjustment)))
+    
     # Print consensus forecast structured JSON for backend WebSocket parsing
     try:
         if forecast_res.get("status") == "success":
@@ -375,13 +422,17 @@ def consensus_moderator_node(state: SwarmState) -> dict:
                 "type": "consensus_forecast",
                 "ticker": ticker,
                 "verdict": structured_out.consensus_verdict,
-                "confidence": structured_out.consensus_confidence,
+                "confidence": round(final_confidence, 2),
                 "predict_price_5s": [float(p) for p in forecast_res["predict_price_5s"]],
                 "predict_price_5m": [float(p) for p in forecast_res["predict_price_5m"]],
                 "predict_price_5h": [float(p) for p in forecast_res["predict_price_5h"]],
                 "predict_price_5d": [float(p) for p in forecast_res["predict_price_5d"]],
                 "baseline_trajectory": [float(p) for p in forecast_res["baseline_trajectory"]],
-                "advanced_trajectory": [float(p) for p in forecast_res["advanced_trajectory"]]
+                "advanced_trajectory": [float(p) for p in forecast_res["advanced_trajectory"]],
+                # Add validation report fields
+                "validation_status": eval_out.validation_status,
+                "evaluation_analysis": eval_out.evaluation_analysis,
+                "confidence_adjustment": eval_out.confidence_adjustment
             }
             print(json.dumps(forecast_data))
             sys.stdout.flush()
@@ -400,14 +451,17 @@ def consensus_moderator_node(state: SwarmState) -> dict:
             "predict_price_5h": [price] * 5,
             "predict_price_5d": [price] * 5,
             "baseline_trajectory": [price] * 5,
-            "advanced_trajectory": [price] * 5
+            "advanced_trajectory": [price] * 5,
+            "validation_status": "VALIDATION_FAILED",
+            "evaluation_analysis": f"Failed to compute math forecasts: {fe}",
+            "confidence_adjustment": 0.0
         }
         print(json.dumps(fallback_data))
         sys.stdout.flush()
     
     return {
         "consensus_verdict": structured_out.consensus_verdict,
-        "consensus_confidence": structured_out.consensus_confidence
+        "consensus_confidence": final_confidence
     }
 
 def create_swarm_graph() -> StateGraph:

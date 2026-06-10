@@ -147,7 +147,10 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
                 "predict_price_5h": p5h,
                 "predict_price_5d": p5d,
                 "baseline_trajectory": p5d,
-                "advanced_trajectory": p5d
+                "advanced_trajectory": p5d,
+                "validation_status": "VALIDATED",
+                "evaluation_analysis": "Mock evaluation: Mathematical projections align properly with the qualitative consensus verdict of BUY.",
+                "confidence_adjustment": 0.0
             }))
             sys.stdout.flush()
 

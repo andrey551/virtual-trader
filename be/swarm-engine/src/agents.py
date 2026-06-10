@@ -32,6 +32,11 @@ class ModeratorOutput(BaseModel):
     risk_multiplier: float = Field(description="Volatility and risk sizing multiplier, typically 0.5 to 2.0.")
     volatility_outlook: str = Field(description="Expected volatility of the asset: HIGH, MEDIUM, or LOW.")
 
+class ForecastEvaluationOutput(BaseModel):
+    validation_status: str = Field(description="Review verdict for the mathematical price trajectories. Must be exactly one of: VALIDATED (aligns perfectly with consensus and risk targets), ADJUSTED (valid but needs caution or adjustments), or ANOMALY_DETECTED (mathematical outputs diverge significantly from qualitative reality).")
+    evaluation_analysis: str = Field(description="Detailed qualitative analysis and validation of the baseline and advanced price curves relative to the specialists debate and risk boundaries.")
+    confidence_adjustment: float = Field(description="Adjustment to final consensus confidence (from -20.0 to +20.0) based on mathematical trajectory validation.")
+
 # Initialize Gemini Chat LLMs safely if key is available
 llm_flash = None
 llm_pro = None
@@ -242,6 +247,12 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
             return AnalystOutput(verdict="HOLD", confidence=50.0, analysis=error_msg, key_argument="API error fallback", counter_arguments="")
         elif output_schema == RiskManagerOutput:
             return RiskManagerOutput(entry_zone_min=0.0, entry_zone_max=0.0, target_price=0.0, stop_loss=0.0, risk_verdict="HOLD", risk_analysis=error_msg)
+        elif output_schema == ForecastEvaluationOutput:
+            return ForecastEvaluationOutput(
+                validation_status="VALIDATED",
+                evaluation_analysis=f"Fallback evaluation due to structured call error: {error_msg}",
+                confidence_adjustment=0.0
+            )
         else:
             return ModeratorOutput(
                 consensus_verdict="HOLD",

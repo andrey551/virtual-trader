@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
-import yfinance as yf
+import requests
+import os
 from datetime import datetime, timedelta
 from typing import Dict, Any
 
@@ -10,34 +11,61 @@ from src.models.long_term import simulate_regression
 
 def fetch_candles_safely(ticker: str, period: str, interval: str, current_price: float) -> pd.DataFrame:
     """
-    Downloads historical candle data using yfinance.
-    If it fails or returns empty data (e.g. due to internet issues or invalid tickers),
+    Fetches historical candle data from the Backend Core candles API.
+    If it fails or returns empty data (e.g. offline or API down),
     generates realistic mock historical candles starting from current_price.
     """
+    # Resolve the Backend base URL:
+    # If MCP_USE_DOCKER=True, we call the backend service container: http://backend:8000
+    # Otherwise, we call localhost:8000
+    use_docker = os.getenv("MCP_USE_DOCKER", "False").lower() in ("true", "1", "yes")
+    backend_base = "http://backend:8000" if use_docker else "http://localhost:8000"
+    
+    url = f"{backend_base}/api/assets/{ticker}/candles"
+    params = {"interval": interval, "period": period}
+    
     try:
-        # Fetch data using yfinance
-        df = yf.download(ticker, period=period, interval=interval, progress=False)
-        if not df.empty and len(df) > 5:
-            # Flatten columns if multi-index is returned (happens in some yfinance versions)
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
-            return df
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            if data.get("status") == "success" and data.get("candles"):
+                candles_list = data["candles"]
+                df = pd.DataFrame(candles_list)
+                
+                # Map JSON columns to DataFrame columns
+                df = df.rename(columns={
+                    "close": "Close",
+                    "open": "Open",
+                    "high": "High",
+                    "low": "Low",
+                    "volume": "Volume",
+                    "time": "Date"
+                })
+                
+                if "Date" in df.columns:
+                    df["Date"] = pd.to_datetime(df["Date"])
+                    df.set_index("Date", inplace=True)
+                
+                df["Close"] = df["Close"].astype(float)
+                if "Volume" in df.columns:
+                    df["Volume"] = df["Volume"].astype(float)
+                
+                if not df.empty and len(df) > 5:
+                    return df
     except Exception as e:
-        print(f"[Math Forecaster] yfinance fetch failed for {ticker} ({interval}): {e}. Using mock fallback.")
+        print(f"[Math Forecaster] Failed to fetch candles from Backend API ({url}): {e}. Using mock fallback.")
 
     # Generative mock fallback
-    # Create a realistic pandas DataFrame with 'Close' and 'Volume' columns
     num_candles = 100
     if interval == "1m":
-        freq = "1min"
+        freq = "min"
     elif interval == "1h":
-        freq = "1H"
+        freq = "h"
     else:
-        freq = "1D"
+        freq = "D"
         
     dates = pd.date_range(end=datetime.now(), periods=num_candles, freq=freq)
     
-    # Simulate standard random walk (drift=0.0001, vol=0.01)
     np.random.seed(42)
     returns = np.random.normal(0.0001, 0.005, size=num_candles)
     price_series = current_price * np.exp(np.cumsum(returns) - returns.sum())
@@ -56,8 +84,8 @@ def predict_forecast(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     ticker = args.get("ticker", "AAPL")
     current_price = float(args.get("current_price", 100.0))
-    verdict = args.get("verdict", "HOLD")
-    confidence = float(args.get("confidence", 50.0))
+    consensus_verdict = args.get("consensus_verdict", "HOLD")
+    consensus_confidence = float(args.get("consensus_confidence", 50.0))
     momentum_direction = float(args.get("momentum_direction", 0.0))
     risk_multiplier = float(args.get("risk_multiplier", 1.0))
     volatility_outlook = args.get("volatility_outlook", "MEDIUM")

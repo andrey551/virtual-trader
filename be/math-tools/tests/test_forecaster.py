@@ -60,8 +60,8 @@ class TestForecasters(unittest.TestCase):
         args = {
             "ticker": "AAPL",
             "current_price": 150.0,
-            "verdict": "BUY",
-            "confidence": 75.0,
+            "consensus_verdict": "BUY",
+            "consensus_confidence": 75.0,
             "momentum_direction": 1.0,
             "risk_multiplier": 1.0,
             "volatility_outlook": "HIGH"

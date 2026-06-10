@@ -32,11 +32,11 @@ async def handle_list_tools() -> list[types.Tool]:
                         "type": "number",
                         "description": "The current price/spot price of the asset."
                     },
-                    "verdict": {
+                    "consensus_verdict": {
                         "type": "string",
                         "description": "Consensus verdict determined by Swarm (STRONG_BUY, BUY, HOLD, SELL, STRONG_SELL)."
                     },
-                    "confidence": {
+                    "consensus_confidence": {
                         "type": "number",
                         "description": "Consensus confidence level as percentage (0.0 to 100.0)."
                     },
@@ -54,7 +54,7 @@ async def handle_list_tools() -> list[types.Tool]:
                     }
                 },
                 "required": [
-                    "ticker", "current_price", "verdict", "confidence",
+                    "ticker", "current_price", "consensus_verdict", "consensus_confidence",
                     "momentum_direction", "risk_multiplier", "volatility_outlook"
                 ],
             }
