@@ -63,26 +63,14 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
     persona = AGENT_PERSONAS[agent_code]
     agent_name = persona["name"]
     avatar = persona["avatar_code"]
-    
-    # 1. Print TYPING
-    print(json.dumps({
-        "agent_name": agent_name,
-        "avatar_code": avatar,
-        "message": "",
-        "status": "TYPING"
-    }))
-    sys.stdout.flush()
-    
     # Choose appropriate model: Pro for Swarm Moderator, Flash for specialists
     llm = llm_pro if agent_code == "MOD_O" else llm_flash
     if not llm:
         raise ValueError("Gemini API Client is not initialized. Please configure GEMINI_API_KEY.")
-        
     messages = [
         ("system", prompt_system),
         ("user", prompt_user)
     ]
-    
     full_text = ""
     try:
         # Stream response chunk-by-chunk
@@ -90,25 +78,10 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
             content = chunk.content
             if content:
                 full_text += content
-                print(json.dumps({
-                    "agent_name": agent_name,
-                    "avatar_code": avatar,
-                    "message_chunk": content,
-                    "status": "SPEAKING"
-                }))
-                sys.stdout.flush()
     except Exception as e:
         # Gracefully handle API failures by falling back to errors printed as chat
         error_msg = f"[Error calling Gemini API: {str(e)}]"
         full_text += error_msg
-        print(json.dumps({
-            "agent_name": agent_name,
-            "avatar_code": avatar,
-            "message_chunk": error_msg,
-            "status": "SPEAKING"
-        }))
-        sys.stdout.flush()
-
     # 2. Print COMPLETED
     print(json.dumps({
         "agent_name": agent_name,
@@ -117,14 +90,11 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
         "status": "COMPLETED"
     }))
     sys.stdout.flush()
-
     # 3. Print METRICS for tracking
     prompt_tokens = max(1, len(prompt_system + prompt_user) // 4)
     completion_tokens = max(1, len(full_text) // 4)
     total_tokens = prompt_tokens + completion_tokens
-    
     model_name = GEMINI_PRO_MODEL if agent_code == "MOD_O" else GEMINI_FLASH_MODEL
-    
     print(json.dumps({
         "type": "metrics",
         "agent_name": agent_name,
@@ -135,9 +105,7 @@ def stream_agent_speech(agent_code: str, prompt_system: str, prompt_user: str) -
         "model": model_name
     }))
     sys.stdout.flush()
-
     return full_text
-
 
 def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_user: str, output_schema):
     """
@@ -148,30 +116,17 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
     persona = AGENT_PERSONAS[agent_code]
     agent_name = persona["name"]
     avatar = persona["avatar_code"]
-    
-    # 1. Print TYPING
-    print(json.dumps({
-        "agent_name": agent_name,
-        "avatar_code": avatar,
-        "message": "",
-        "status": "TYPING"
-    }))
-    sys.stdout.flush()
-    
     llm = llm_pro if agent_code == "MOD_O" else llm_flash
     if not llm:
         raise ValueError("Gemini API Client is not initialized. Please configure GEMINI_API_KEY.")
-        
     messages = [
         ("system", prompt_system),
         ("user", prompt_user)
     ]
-    
     try:
         # Wrap the LLM with structured output schema
         structured_llm = llm.with_structured_output(output_schema)
         result = structured_llm.invoke(messages)
-        
         # Extract the appropriate text field to stream chunk-by-chunk for the frontend
         text_to_stream = ""
         if hasattr(result, "analysis"):
@@ -182,20 +137,6 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
             text_to_stream = result.risk_analysis
         elif hasattr(result, "synthesis_rationale"):
             text_to_stream = result.synthesis_rationale
-            
-        # Simulate chunk streaming to stdout for the WebSocket consumer
-        chunk_size = 8
-        for i in range(0, len(text_to_stream), chunk_size):
-            chunk = text_to_stream[i:i+chunk_size]
-            print(json.dumps({
-                "agent_name": agent_name,
-                "avatar_code": avatar,
-                "message_chunk": chunk,
-                "status": "SPEAKING"
-            }))
-            sys.stdout.flush()
-            time.sleep(0.015) # 15ms typewriter delay
-            
         # 2. Print COMPLETED
         print(json.dumps({
             "agent_name": agent_name,
@@ -204,13 +145,11 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
             "status": "COMPLETED"
         }))
         sys.stdout.flush()
-        
         # 3. Print METRICS
         prompt_tokens = max(1, len(prompt_system + prompt_user) // 4)
         completion_tokens = max(1, len(text_to_stream) // 4)
         total_tokens = prompt_tokens + completion_tokens
         model_name = GEMINI_PRO_MODEL if agent_code == "MOD_O" else GEMINI_FLASH_MODEL
-        
         print(json.dumps({
             "type": "metrics",
             "agent_name": agent_name,
@@ -221,19 +160,10 @@ def stream_structured_agent_speech(agent_code: str, prompt_system: str, prompt_u
             "model": model_name
         }))
         sys.stdout.flush()
-        
         return result
-        
     except Exception as e:
         # Handle failures gracefully by falling back to text error blocks
         error_msg = f"[Error in structured Gemini call: {str(e)}]"
-        print(json.dumps({
-            "agent_name": agent_name,
-            "avatar_code": avatar,
-            "message_chunk": error_msg,
-            "status": "SPEAKING"
-        }))
-        sys.stdout.flush()
         print(json.dumps({
             "agent_name": agent_name,
             "avatar_code": avatar,

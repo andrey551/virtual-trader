@@ -81,31 +81,6 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
             sys.stdout.flush()
             time.sleep(0.5)
             continue
-
-        
-        # 1. Send TYPING
-        print(json.dumps({
-            "agent_name": agent_name,
-            "avatar_code": avatar,
-            "message": "",
-            "status": "TYPING"
-        }))
-        sys.stdout.flush()
-        time.sleep(0.3)
-        
-        # 2. Send SPEAKING chunks
-        chunk_size = 5
-        for i in range(0, len(full_msg), chunk_size):
-            chunk = full_msg[i:i+chunk_size]
-            print(json.dumps({
-                "agent_name": agent_name,
-                "avatar_code": avatar,
-                "message_chunk": chunk,
-                "status": "SPEAKING"
-            }))
-            sys.stdout.flush()
-            time.sleep(0.04) # fast typing simulation
-            
         # 3. Send COMPLETED
         print(json.dumps({
             "agent_name": agent_name,
