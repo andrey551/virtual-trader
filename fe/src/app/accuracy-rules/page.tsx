@@ -8,8 +8,6 @@ import {
   Award, 
   Activity, 
   HelpCircle, 
-  TrendingUp, 
-  TrendingDown, 
   Lock, 
   Calculator 
 } from "lucide-react";

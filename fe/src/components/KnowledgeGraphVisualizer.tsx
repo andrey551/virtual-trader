@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { BACKEND_URL } from "../config";
-import { HelpCircle, Network, Info, Award } from "lucide-react";
+import { HelpCircle, Network, Info } from "lucide-react";
 
 interface GraphNode {
   id: number;
@@ -69,8 +69,8 @@ export default function KnowledgeGraphVisualizer({ ticker }: KnowledgeGraphVisua
 
         setNodes(initializedNodes);
         setEdges(data.edges);
-      } catch (err: any) {
-        setError(err.message || "Something went wrong loading the graph.");
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Something went wrong loading the graph.");
       } finally {
         setLoading(false);
       }
@@ -193,6 +193,7 @@ export default function KnowledgeGraphVisualizer({ ticker }: KnowledgeGraphVisua
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodes.length, edges, draggedNodeId]);
 
   // Drag handlers
