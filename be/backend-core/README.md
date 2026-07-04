@@ -1,54 +1,66 @@
-# 🏛️ FastAPI Backend Core
+# 🏛️ FastAPI Backend Core Orchestrator
 
-Đây là bộ não điều phối trung tâm (Orchestrator Core) của dự án **Virtual Trader**, được xây dựng bằng framework **FastAPI**. Backend Core kết nối trực tiếp với MCP Data Crawler thông qua giao thức STDIO để cập nhật dữ liệu tài sản, lên lịch quét tin tức vĩ mô, ghi nhận các gợi ý đầu tư, và kích hoạt Swarm Debate Engine chạy tranh luận AI.
+This is the central brain (Orchestrator Core) of the **Virtual Trader** project, built using the **FastAPI** framework. The Backend Core communicates directly with the MCP Data Crawler via standard input/output (STDIO) to update asset data, schedules macroeconomic news scraping, records investment recommendations, and invokes the LangGraph Swarm Debate Engine to coordinate AI agent arguments.
 
 ---
 
-## 🏗️ Kiến Trúc Các Thành Phần
+## 🏗️ Components & Architecture
 
-*   **Database Config (`src/database.py`, `src/config.py`)**: Tích hợp ORM **SQLAlchemy** quản lý kết nối cơ sở dữ liệu. Mặc định tự động kết nối tới cơ sở dữ liệu cục bộ **SQLite** (`sqlite:///./virtual_trader.db`) giúp phát triển nhanh, và hỗ trợ cấu hình chuyển sang **PostgreSQL** trong môi trường Production.
-*   **Relational Models (`src/models/`)**: Định nghĩa cấu trúc dữ liệu:
-    *   `asset.py`: Lưu trữ các mã tài sản được theo dõi (Ticker, Category, Consensus Verdict, Confidence Level, Hit Rate Accuracy).
-    *   `event.py`: Lưu trữ các sự kiện kinh tế/địa chính trị, điểm tác động, và bản đồ liên kết ảnh hưởng tài sản (hỗ trợ lưu trữ Vector Embedding cho PostgreSQL).
-    *   `recommendation.py`: Lưu trữ gợi ý giao dịch (Entry, Target, Stop Loss, Returns, status).
-    *   `debate.py`: Lưu trữ các phiên tranh luận của Swarm Agents.
-*   **Stdio MCP Client (`src/services/mcp_client.py`)**: Singleton Client tự động khởi chạy và duy trì tiến trình con (subprocess) của MCP Data Crawler Server qua luồng STDIO chuẩn, cho phép gọi trực tiếp các tool cào dữ liệu và tin tức từ API FastAPI.
-*   **Background Ingestion (`src/workers/news_scheduler.py`)**: Tích hợp bộ lập lịch **APScheduler** chạy vòng lặp ngầm định kỳ mỗi 60 giây. Worker này tự động gọi công cụ quét tin tức vĩ mô, bóc tách và phân loại sắc thái (Bullish/Bearish) rồi cập nhật cơ sở dữ liệu.
+* **Database Config (`src/database.py`, `src/config.py`)**: Manages database sessions utilizing the **SQLAlchemy** ORM. Default configuration falls back to a local **SQLite** database (`sqlite:///./virtual_trader.db`) for rapid local development and testing, with support for **PostgreSQL** in production environments.
+* **Relational Models (`src/models/`)**: Defines the relational schemas:
+  * `asset.py`: Stores monitored assets (Ticker, Category, Consensus Verdict, Confidence Level, Hit Rate Accuracy).
+  * `event.py`: Stores economic and geopolitical events, impact scores, and asset mappings (with pgvector embedding support for PostgreSQL).
+  * `recommendation.py`: Stores generated trade entry zones, stop losses, profit targets, performance status, and returns.
+  * `debate.py`: Stores conversation history and outputs of Swarm Agent debate sessions.
+  * `prediction_cache.py`: Caches AI predictions to optimize Gemini API costs.
+  * `knowledge_graph.py`: Defines nodes and edges of the multi-relation knowledge graph.
+* **Stdio MCP Client (`src/services/mcp_client.py`)**: A thread-safe singleton manager that maintains the Playwright MCP crawler subprocess over standard I/O (STDIO), enabling API routers to call web tools directly.
+* **Background News Worker (`src/workers/news_scheduler.py`)**: Leverages **APScheduler** to scan global financial RSS feeds (e.g. Google News) every 60 seconds. New articles are downloaded, analyzed for sentiment (Bullish/Bearish), and mapped to affected assets.
 
 ---
 
 ## 🔌 API Endpoints & WebSockets
 
 ### 1. REST API Router (`src/routes/`)
-*   `GET /api/assets`: Trả về danh sách các mã tài sản đang được giám sát (Cổ phiếu, Crypto, Forex, Chỉ số). Tự động nạp hạt giống dữ liệu (seed data) nếu cơ sở dữ liệu trống.
-*   `GET /api/assets/{ticker}`: Trả về thông tin chi tiết của một mã cụ thể. Nếu mã chưa được giám sát, tiến hành gọi mcp check giá và đưa vào cơ sở dữ liệu.
-*   `GET /api/assets/{ticker}/candles`: Gọi mcp client lấy dữ liệu nến kỹ thuật theo `interval` (khung thời gian) và `period` (độ dài lịch sử) được truyền vào từ Client.
-*   `GET /api/events`: Trả về các sự kiện macro ảnh hưởng đến thị trường kèm theo danh sách các tài sản bị ảnh hưởng tương ứng và điểm tác động.
-*   `GET /api/recommendations`: Trả về lịch sử khuyến nghị giao dịch của hệ thống.
-*   `POST /api/mcp`: Cổng HTTP Bridge cho phép gọi trực tiếp các công cụ của MCP từ bên ngoài.
 
-### 2. Live WebSockets
-*   **WebSocket Giá `/ws/prices?tickers=BTC-USD,EURUSD=X`**: Lắng nghe thay đổi giá trực tiếp. Để tiết kiệm băng thông, hệ thống **chỉ push dữ liệu xuống client khi giá có biến động mạnh (tỷ lệ thay đổi >= 0.15%)**.
-*   **WebSocket Swarm Debate `/ws/swarm-debate/{session_id}`**: Lắng nghe luồng tranh luận. Khi nhận được tín hiệu kích hoạt từ Client, FastAPI sử dụng `asyncio.create_subprocess_exec` để gọi tiến trình con thực thi độc lập **Swarm Debate Engine** (`be/swarm-engine/src/main.py`), đọc luồng output `stdout` theo từng dòng và stream trực tiếp dạng typewriter xuống Frontend.
+* **Assets Router (`/api/assets`)**:
+  * `GET /api/assets`: Returns a list of all monitored tickers. Seeds default indices and assets (e.g., BTC-USD, AAPL, EURUSD=X) if the database is empty.
+  * `GET /api/assets/{ticker}`: Returns details for a specific asset. If the ticker is unregistered, it initiates a price fetch via MCP and saves the asset.
+  * `GET /api/assets/{ticker}/candles`: Fetches historical price candle bars from yFinance via the MCP crawler client based on user-defined `interval` and `period`.
+* **Events Router (`/api/events`)**:
+  * `GET /api/events`: Returns recent macroeconomic events, their market sentiment, and lists of affected asset tickers.
+* **Recommendations Router (`/api/recommendations`)**:
+  * `GET /api/recommendations`: Returns active and closed system-suggested trading signals.
+* **MCP Bridge Router (`/api/mcp`)**:
+  * `POST /api/mcp`: Provides an HTTP bridge allowing clients to invoke registered MCP tools directly.
+* **Knowledge Graph Router (`/api/knowledge-graph`)**:
+  * `GET /api/knowledge-graph/asset/{ticker}`: Returns nodes and edges within a 2-hop radius centered around the specified asset.
+  * `POST /api/knowledge-graph/clean`: Manually triggers the edge weight decay loop (temporary weights decay by 5% toward baseline levels).
+  * `POST /api/knowledge-graph/seed`: Pre-populates the database with initial sectors, indicators, and abstract nodes.
+
+### 2. Real-Time WebSockets
+
+* **Live Quote Feed `/ws/prices?tickers=BTC-USD,EURUSD=X`**: Subscribes to real-time price updates. To optimize network bandwidth, **updates are only pushed down to the client when the price changes by 0.15% or more** (`diff_pct >= 0.0015`).
+* **Swarm Debate Stream `/ws/swarm-debate/{session_id}`**: Coordinates the LangGraph Swarm Engine. Upon client request, FastAPI spawns the independent CLI swarm engine (`be/swarm-engine/src/main.py`) as a subprocess, parsing stdout outputs and streaming them chunk-by-chunk down the WebSocket using a typewriter effect.
 
 ---
 
-## 🚀 Hướng Dẫn Cài Đặt & Khởi Chạy
+## 🚀 Setup & Execution (Local Development)
 
-### 1. Yêu Cầu Hệ Thống
-*   Python 3.11+
-*   Dependencies cài đặt từ `requirements.txt`.
+### 1. Prerequisites
+* Python 3.11+
+* Ensure Docker is running if configuring container integrations.
 
-### 2. Cài Đặt Dependencies
+### 2. Install Dependencies
 ```bash
-# Đứng tại be/backend-core/
+# From the be/backend-core directory
 pip install -r requirements.txt
 ```
 
-### 3. Chạy Môi Trường Phát Triển (Local Dev)
-Khởi chạy máy chủ **Uvicorn**:
+### 3. Run the Development Server
+Start the FastAPI server via **Uvicorn**:
 ```bash
 python -m uvicorn src.main:app --port 8000
 ```
-Server sẽ chạy tại [http://localhost:8000](http://localhost:8000). Tài liệu API Swagger có thể xem tại [http://localhost:8000/docs](http://localhost:8000/docs).
-*Lưu ý: Đảm bảo bạn đã build Docker image `mcp-data-crawler` trước khi chạy server, vì mcp client trong backend sẽ tự động spawn container mcp để giao tiếp.*
+* Swagger interactive documentation will be available at [http://localhost:8000/docs](http://localhost:8000/docs).
+* **Note**: Ensure the local `mcp-data-crawler` image is built or running if `MCP_USE_DOCKER` is configured, as the backend will initiate handshakes on startup.

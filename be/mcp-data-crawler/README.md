@@ -1,76 +1,79 @@
-# 🔌 MCP Data Crawler (Dynamic & Structured)
+# 🔌 Playwright MCP Data Crawler
 
-Đây là một Model Context Protocol (MCP) server được viết bằng Python, sử dụng trình duyệt **Playwright** và các bộ thư viện tài chính để cào dữ liệu động, truy vấn tin tức vĩ mô, và lấy thông tin nến thị trường dưới dạng **cấu trúc JSON**. 
+This is a Model Context Protocol (MCP) server written in Python that leverages the **Playwright** automation framework alongside financial libraries to crawl web pages, query economic indices, and acquire historical and real-time market telemetry as structured JSON payloads.
 
-Server tích hợp sẵn cơ chế **Cache cục bộ (Thread-safe Cache)** và **Phân tích Tâm lý (Sentiment Analysis)** tự động.
-
----
-
-## 🛠️ Các Thành Phần Core & Utilities
-
-*   **Cache Manager (`src/utils/cache.py`)**: Cơ chế cache lưu trữ an toàn luồng (thread-safe) trong bộ nhớ với thời gian sống (TTL) tùy chỉnh (ví dụ: 15 giây cho giá trực tiếp, 30 phút cho nến lịch sử) để tránh bị chặn IP (Rate Limit) do yêu cầu trùng lặp.
-*   **Sentiment Analyzer (`src/utils/sentiment.py`)**: Thuật toán phân tích sắc thái văn bản dựa trên từ khóa tài chính (Lexicon-based). Tính toán điểm Sentiment từ `-1.0` (cực kỳ tiêu cực/bearish) đến `+1.0` (cực kỳ tích cực/bullish).
-*   **Playwright Crawler (`src/tools/crawler.py`)**: Trình thu thập dữ liệu web động bằng headless browser Chromium. Hỗ trợ chặn tải tài nguyên thừa (hình ảnh, fonts, stylesheet) để tăng tốc độ tải từ 3-5 lần, tự động cuộn (auto-scroll) kích hoạt AJAX, và cào dữ liệu bằng CSS Selectors.
+The server includes a thread-safe caching layer and a financial lexicon-based sentiment analysis engine.
 
 ---
 
-## 🔧 Danh Sách 5 Công Cụ Tích Hợp (Registered Tools)
+## 🛠️ Core Utilities
 
-Server đăng ký 5 công cụ chuẩn MCP qua giao thức STDIO:
+* **Cache Manager (`src/utils/cache.py`)**: A thread-safe, in-memory cache with custom TTLs (e.g., 15 seconds for real-time tickers, 30 minutes for historical bars) to prevent IP blocks and rate limits from external APIs.
+* **Sentiment Analyzer (`src/utils/sentiment.py`)**: A lexicon-based keyword matching algorithm tailored for financial headlines. It produces a sentiment score between `-1.0` (strongly bearish) and `+1.0` (strongly bullish).
+* **Playwright Web Scraper (`src/tools/crawler.py`)**: A crawler powered by headless Chromium. It blocks non-essential assets (images, stylesheets, fonts) to increase performance, executes page auto-scrolls to trigger AJAX requests, and extracts data using CSS selectors.
+
+---
+
+## 🔧 Registered Tools
+
+The server registers 5 primary tools over the STDIO channel:
 
 ### 1. `get_market_price`
-Lấy giá hiện tại, biên độ biến động tuyệt đối và phần trăm của một mã tài sản.
-*   **Tham số đầu vào:**
-    *   `ticker` (string, required): Mã tài sản (Ví dụ: `AAPL`, `TSLA`, `BTC-USD`, `EURUSD=X`, `^GSPC`).
-*   **Luồng xử lý (3-Tier Fallback):** Thử lấy qua fast_info nhanh -> Parse Ticker JSON chi tiết -> Tính từ nến 5 ngày gần nhất.
-*   **Kết quả:** JSON chứa `price`, `change`, `changePercent`, `currency` và `timestamp`.
+Retrieves current spot prices, currency, daily changes, and percentage changes for global financial assets.
+* **Input Parameters**:
+  * `ticker` (string, required): Asset symbol (e.g. `AAPL`, `TSLA`, `BTC-USD`, `EURUSD=X`, `^GSPC`, `^VIX`).
+* **Lookup Strategy**: Attempts a fast metadata lookup -> parses details from ticker tables -> falls back to calculating the average of the last 5 days of closing prices.
+* **Returns**: JSON object containing `price`, `change`, `changePercent`, `currency`, and `timestamp`.
 
 ### 2. `get_historical_candles`
-Lấy dữ liệu nến lịch sử (OHLCV) hỗ trợ vẽ biểu đồ kỹ thuật.
-*   **Tham số đầu vào:**
-    *   `ticker` (string, required): Mã tài sản.
-    *   `interval` (string, optional, enum): Độ dài nến (`1m`, `5m`, `15m`, `30m`, `1h`, `1d`, `1wk`, `1mo`). Mặc định: `1d`.
-    *   `period` (string, optional, enum): Khoảng thời gian lấy (`1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `max`). Mặc định: `1mo`.
-*   **Kết quả:** Danh sách JSON chứa `time` (ISO date-time), `open`, `high`, `low`, `close`, `volume`.
+Retrieves historical OHLCV (Open, High, Low, Close, Volume) candlestick bars for technical charting.
+* **Input Parameters**:
+  * `ticker` (string, required): Asset symbol.
+  * `interval` (string, optional, enum): Duration of each candle bar (`1m`, `2m`, `5m`, `15m`, `30m`, `60m`, `1h`, `1d`, `5d`, `1wk`, `1mo`). Default is `1d`.
+  * `period` (string, optional, enum): Extent of history to retrieve (`1d`, `5d`, `1mo`, `3mo`, `6mo`, `1y`, `2y`, `5y`, `max`). Default is `1mo`.
+* **Returns**: Array of candlestick bars containing `time` (ISO-8601), `open`, `high`, `low`, `close`, `volume`.
 
 ### 3. `get_crypto_ticker`
-Lấy dữ liệu giá và độ sâu sổ lệnh (Order Book Depth) trực tiếp từ API Binance.
-*   **Tham số đầu vào:**
-    *   `symbol` (string, required): Cặp giao dịch Binance (Ví dụ: `BTCUSDT`, `ETHUSDT`, `SOLUSDT`).
-    *   `depth` (integer, optional): Số bước giá bid/ask cần lấy (mặc định: `10`, tối đa `100`).
-*   **Kết quả:** JSON chứa giá khớp gần nhất và danh sách các mức giá mua (`bids`)/bán (`asks`).
+Queries spot exchange rates and order book depth directly from the Binance exchange API.
+* **Input Parameters**:
+  * `symbol` (string, required): Binance trading pair (e.g. `BTCUSDT`, `ETHUSDT`, `SOLUSDT`).
+  * `depth` (integer, optional): Number of bid/ask levels to retrieve (default: `10`, maximum: `100`).
+* **Returns**: JSON object containing `price` and lists of current `bids` and `asks`.
 
 ### 4. `get_market_news`
-Quét tin tức kinh tế, tính toán điểm tâm lý và tự động gán mã tài sản bị ảnh hưởng.
-*   **Tham số đầu vào:**
-    *   `query` (string, required): Từ khóa tìm kiếm (Ví dụ: `OPEC`, `Federal Reserve`, `Bitcoin`).
-    *   `limit` (integer, optional): Số lượng bài báo tối đa trả về (mặc định: `5`).
-*   **Luồng xử lý:** Quét Google News RSS -> Bóc tách text qua BeautifulSoup -> Chạy thuật toán Sentiment -> Gán tag tài sản dựa trên từ khóa khớp (ví dụ: "oil spill" -> `USO`, `XOM`).
-*   **Kết quả:** Danh sách tin tức kèm điểm sentiment (`sentiment_score`) và danh sách ticker liên đới (`tickers`).
+Scrapes macroeconomic RSS feeds, calculates article sentiment, and maps relevant asset tags.
+* **Input Parameters**:
+  * `query` (string, required): Headline search terms or tickers (e.g. `OPEC`, `Federal Reserve`, `NVIDIA`).
+  * `limit` (integer, optional): Maximum articles to return (default: `5`).
+* **Lookup Strategy**: Fetches feeds from Google News -> parses text content -> scores sentiment -> scans article keywords for known tickers (e.g. "interest rates" -> `EURUSD=X`, "oil spill" -> `USO`, `XOM`).
+* **Returns**: Array of articles containing titles, urls, publication times, `sentiment_score`, and matching `tickers`.
 
 ### 5. `scrape_dynamic_page`
-Cào nội dung văn bản hoặc dữ liệu theo CSS selectors từ URL bất kỳ.
-*   **Tham số đầu vào:**
-    *   `url` (string, required): Địa chỉ URL cần cào.
-    *   `selectors` (object, optional): Bản đồ thuộc tính và CSS Selector tương ứng.
-    *   `wait_selector` (string, optional): Selector chờ load trước khi cào.
-    *   `raw_html` (boolean, optional): Nếu `True`, bỏ qua trình duyệt Chromium và cào tĩnh bằng requests nhanh.
-*   **Kết quả:** JSON chứa tiêu đề trang và dữ liệu text/selectors bóc tách được.
+Crawls static HTML markup or renders dynamic javascript pages to extract text or selector-matched content.
+* **Input Parameters**:
+  * `url` (string, required): Target web page URL.
+  * `selectors` (object, optional): Key-to-CSS-selector mappings (e.g., `{"title": "h1.entry-title", "price": ".price"}`).
+  * `wait_selector` (string, optional): Selector to await before extracting.
+  * `raw_html` (boolean, optional): If `True`, bypasses Chromium execution and executes a fast static HTML fetch.
+* **Returns**: JSON object containing target page title and parsed text elements.
 
 ---
 
-## 🐳 Hướng dẫn Docker & Cài đặt
+## 🐳 Dockerization & Configuration
 
-### 1. Khởi chạy độc lập (STDIO)
+### 1. Running the Container Independently (STDIO)
+To run the server inside an isolated container:
 ```bash
-# Đứng tại be/mcp-data-crawler/
+# Build the image from be/mcp-data-crawler/
 docker build -t mcp-data-crawler .
+
+# Run the container
 docker run -i --rm --ipc=host mcp-data-crawler
 ```
-*Lưu ý: Flag `--ipc=host` ngăn lỗi tràn bộ nhớ dùng chung của trình duyệt Chromium.*
+*Note: The `--ipc=host` flag is highly recommended to prevent headless Chromium from crashing due to shared memory limits.*
 
-### 2. Tích hợp Claude Desktop
-Thêm vào file cấu hình `%APPDATA%\Claude\claude_desktop_config.json`:
+### 2. Integration with Claude Desktop Client
+Add the following service configuration block to your `%APPDATA%\Claude\claude_desktop_config.json` file:
 ```json
 {
   "mcpServers": {

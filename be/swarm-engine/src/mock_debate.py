@@ -14,43 +14,43 @@ def run_mock_debate(ticker: str, category: str, current_price: float, similar_ev
     messages = [
         {
             "code": "TECH_A",
-            "msg": f"Tôi nhận thấy chỉ số RSI của {ticker} trên khung Daily đã chạm ngưỡng quá bán sâu. Mức giá {current_price} đang nhận được lực cầu bắt đáy rất mạnh từ các ngưỡng MA hỗ trợ."
+            "msg": f"I notice that the daily RSI of {ticker} has touched deeply oversold levels. The price of {current_price} is currently receiving strong dip-buying demand from the key supporting moving averages."
         },
         {
             "code": "FUND_A",
-            "msg": f"Mặc dù kỹ thuật có tín hiệu hồi phục, nhưng từ góc độ định giá, tỷ lệ P/E và giá trị dòng tiền nội tại của {ticker} vẫn đang chịu áp lực điều chỉnh. Chúng ta cần cẩn trọng tránh bẫy tăng giá giả."
+            "msg": f"Although the technical indicators signal a recovery, from a valuation standpoint, the P/E ratio and intrinsic cash flow value of {ticker} are still under downward adjustment pressure. We should remain cautious to avoid a bull trap."
         },
         {
             "code": "MACRO_A",
-            "msg": f"Đúng vậy, chu kỳ siết chặt tiền tệ và lạm phát CPI toàn cầu vẫn chưa kết thúc hoàn toàn. DXY giữ vững mốc 104 điểm sẽ tiếp tục đè nặng lên tài sản rủi ro như {ticker}."
+            "msg": f"Indeed, the monetary tightening cycle and global CPI inflation have not fully normalized. The DXY holding above 104 points will continue to weigh on risk assets like {ticker}."
         },
         {
             "code": "GEOPOL_A",
-            "msg": f"Đừng quên rủi ro địa chính trị đang gia tăng. Báo cáo OPEC gần đây cho thấy nguồn cung Dầu thô bị thắt chặt và các lệnh trừng phạt thương mại sẽ sớm lan sang chuỗi linh kiện công nghệ bán dẫn."
+            "msg": f"Do not forget that geopolitical risks are escalating. The recent OPEC report points to tightening crude supplies, and trade sanctions could soon spread to the semiconductor supply chain."
         },
         {
             "code": "SENT_A",
-            "msg": f"Dữ liệu mạng xã hội (Twitter/Reddit) cho thấy tâm lý đám đông đối với {ticker} đang chuyển từ hoảng loạn cực độ (Extreme Fear) sang tích cực mua tích lũy. Retail FOMO bắt đầu xuất hiện nhen nhóm."
+            "msg": f"Social media telemetry (Twitter/Reddit) indicates that crowd sentiment for {ticker} is shifting from Extreme Fear towards accumulation. Retail FOMO is beginning to sprout."
         },
         {
             "code": "CRYPTO_A",
-            "msg": f"Nếu phân tích on-chain của {ticker}, lượng lớn coins đang được rút khỏi ví sàn chuyển về ví lạnh (cold storage). Điều này báo hiệu áp lực bán tháo đã cạn kiệt, chu kỳ tăng tích lũy mới đang hình thành."
+            "msg": f"Looking at on-chain metrics for {ticker}, large volumes of coins are being withdrawn from exchanges to cold storage. This indicates that sell-off pressure has dried up and an accumulation phase is forming."
         },
         {
             "code": "FOREX_A",
-            "msg": f"Tôi đồng ý. Chênh lệch lãi suất và luồng dịch chuyển dòng tiền tệ quốc tế đang có lợi cho sự ổn định ngắn hạn của {ticker}."
+            "msg": f"I agree. Interest rate differentials and international capital flows are favoring short-term stability for {ticker}."
         },
         {
             "code": "COMM_A",
-            "msg": f"Về mặt cung cầu vật lý, thời tiết cực đoan và việc gián đoạn tàu dầu qua Biển Đỏ có thể đẩy chi phí vận hành logistics của nhóm {ticker} tăng thêm 15%."
+            "msg": f"In terms of physical supply and demand, extreme weather and shipping disruptions in the Red Sea could drive physical logistics costs for {ticker} up by another 15%."
         },
         {
             "code": "RISK_M",
-            "msg": f"Dựa trên các rủi ro đã nêu, tôi đề xuất điểm Entry an toàn ở mức {current_price * 0.98:.2f}, đặt điểm cắt lỗ (Stop Loss) nghiêm ngặt tại {current_price * 0.92:.2f} và mục tiêu chốt lời (Take Profit) tại {current_price * 1.15:.2f}."
+            "msg": f"Based on the discussed risks, I propose a safe entry zone around {current_price * 0.98:.2f}, with a strict stop loss at {current_price * 0.92:.2f} and a take profit target at {current_price * 1.15:.2f}."
         },
         {
             "code": "MOD_O",
-            "msg": f"Tổng kết cuộc tranh luận từ các chuyên gia: Tín hiệu kỹ thuật ủng hộ đà hồi phục ngắn hạn tại {current_price}, mặc dù rủi ro vĩ mô và vận hành vẫn tồn tại. Tỷ lệ đồng thuận đạt 82.5%. Verdict cuối cùng: BUY."
+            "msg": f"Synthesizing the specialists' debate: Technical signals support a short-term rebound around {current_price}, though macroeconomic and operational risks remain. The consensus rate stands at 82.5%. Final verdict: BUY."
         }
     ]
     

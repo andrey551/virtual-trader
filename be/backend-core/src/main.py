@@ -303,6 +303,7 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
             SWARM_CACHE_LOOKUPS.labels(status="miss").inc()
             
         use_docker = os.getenv("MCP_USE_DOCKER", "False").lower() in ("true", "1", "yes")
+        cwd = None
         if use_docker:
             # Spawn swarm-engine in its own container on the host docker daemon
             cmd = [
@@ -328,6 +329,7 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 "--category", category,
                 "--price", str(price)
             ]
+            cwd = os.path.dirname(script_path)
         
         print(f"[WebSocket Debate] Spawning swarm-engine: {' '.join(cmd)}")
         
@@ -346,7 +348,7 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=os.path.dirname(script_path),
+                cwd=cwd,
                 env=env
             )
             
@@ -363,6 +365,8 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 try:
                     # Parse JSON output from swarm-engine
                     data = json.loads(line_str)
+                    print(f"[Swarm Engine] {line_str}")
+                    sys.stdout.flush()
                     
                     # Intercept metrics payload
                     if data.get("type") == "metrics":

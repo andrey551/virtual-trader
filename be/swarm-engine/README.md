@@ -1,71 +1,77 @@
 # 🎭 LangGraph Swarm Debate Engine
 
-Đây là module **Swarm Agents độc lập** chịu trách nhiệm chạy các phiên thảo luận chuyên sâu đa chiều giữa các tác nhân trí tuệ nhân tạo (AI Specialists) để phân tích tác động thị trường và đưa ra các khuyến nghị giao dịch chuẩn xác. Module sử dụng **LangGraph** để xây dựng đồ thị trạng thái (StateGraph) phối hợp và tích hợp công cụ truy vấn độ tương đồng sự kiện vĩ mô quá khứ (**pgvector/SQLite Keyword Similarity**).
+This is an **independent Swarm Agents module** responsible for conducting multi-dimensional debate sessions between specialized AI characters (AI Specialists) to analyze market dynamics and generate precise trading recommendations. The module utilizes **LangGraph** to build a StateGraph coordination flow, integrating vector-based queries for historical macroeconomic analogies (via pgvector or SQLite fallback).
 
 ---
 
-## 🎨 Đồ Thị Trạng Thái & Quy Trình Tranh Luận (LangGraph Workflow)
+## 🎨 State Graph & Debate Process (LangGraph Workflow)
 
 ```text
 RetrieveAnalogy ──> Specialists Analysis ──> Peer Debate ──> Risk Management ──> Moderator Consensus
 ```
 
-1.  **RetrieveAnalogy**: Node đầu tiên truy cập Vector Database hoặc SQL Text Search để tìm ra **3 sự kiện tương đồng lớn nhất trong lịch sử** và lấy dữ liệu biến động giá sau 5 ngày của tài sản đó, làm cơ sở phân tích dữ liệu cho các tác nhân AI.
-2.  **Specialists Analysis**: 9 chuyên gia độc lập thực hiện phân tích dựa trên kiến thức chuyên môn, đưa ra nhận định riêng và chấm điểm Consensus (BUY/SELL/HOLD) kèm mức độ tin cậy.
-3.  **Peer Debate**: Chạy vòng phản biện chéo. Các chuyên gia đọc báo cáo của nhau và phản hồi đối chất dựa trên tính cách của từng nhân vật.
-4.  **Risk Management**: Chuyên gia quản trị rủi ro bảo thủ tính toán quy mô vị thế lệnh tối đa và khuyến nghị điểm dừng lỗ (Stop Loss) an toàn để bảo vệ vốn.
-5.  **Moderator Consensus**: Điều phối viên (Gemini 1.5 Pro) đúc kết nội dung, chấm điểm độ chính xác dự báo lịch sử, đưa ra Verdict cuối cùng kèm phân tích tổng hợp.
+1. **RetrieveAnalogy**: Centers the analysis by querying PostgreSQL pgvector (or SQLite) for **3 similar historical events** and retrieves the subsequent 5-day price fluctuations of the asset. It also traverses the Multi-Relation Knowledge Graph within a 2-hop radius and calculates live technical indicators.
+2. **Specialists Analysis (Round 1)**: Initiates independent analysis rounds. Specialized analysts join based on the asset category, returning structured opinions (Verdict, Confidence, Analysis, and Key Argument) utilizing Pydantic models.
+3. **Peer Debate (Round 2)**: Conducts a cross-critique debate session. Active agents review Round 1 opinions and respond converse-style based on their distinct personalities.
+4. **Risk Management**: The Risk Manager audits the debate, calculates optimal position sizing, and defines defensive entry ranges, target profit levels, and stop losses.
+5. **Moderator Consensus**: The Swarm Moderator synthesizes the debate, weighs arguments, and determines the final consensus verdict and confidence. It then calls the `math-tools` MCP server to generate price trajectories, and runs a final validation check of the quantitative projections against the qualitative consensus and risk parameters.
 
 ---
 
-## 🎭 10 Nhân Cách AI Agents (Personas Prompting)
+## 🎭 10 Specialized AI Personas
 
-Mỗi Agent có một System Prompt và tính cách được cá nhân hóa sâu sắc:
-1.  **Technical Analyst (Thực dụng & Nghi ngờ)**: Chỉ tin vào RSI, MACD, Volume.
-2.  **Fundamental Specialist (Nhà đầu tư giá trị cổ điển)**: Modeled theo Warren Buffett. Tập trung dòng tiền, giá trị nội tại, ghét đầu cơ.
-3.  **Macroeconomics Specialist (Hàn lâm)**: Quan tâm chu kỳ Fed, DXY, CPI, Yields.
-4.  **Geopolitical Analyst (Cảnh giác)**: Nhìn mọi thứ qua OPEC, cấm vận, địa chính trị.
-5.  **Sentiment Lead (Nhạy bén MXH)**: Phân tích FUD, FOMO, Whales trên Twitter/Reddit.
-6.  **Crypto Specialist (Web3 Native)**: Chuyên gia on-chain phân tích dòng tiền ví cá voi, pools.
-7.  **Forex Specialist (Toàn cầu)**: Tập trung chênh lệch lãi suất, tỷ giá fiat chéo.
-8.  **Commodity Specialist (Công nghiệp)**: Theo dõi công suất dầu khí, chuỗi cung ứng vật lý.
-9.  **Risk Manager (Bảo thủ & Hoang tưởng)**: Luôn giả định thị trường sập để tính Stop Loss.
-10. **Swarm Moderator (Ngoại giao & Khách quan)**: Tổng hợp, hòa giải ý kiến trái chiều để đưa ra verdict.
-
----
-
-## 🔄 Chế Độ Chạy Song Song: Mock & Real API
-
-Để hệ thống hoạt động ổn định và có thể kiểm thử offline dễ dàng mà không tốn chi phí API, Swarm Engine tự động định tuyến thông minh:
-*   **Khi THIẾU `GEMINI_API_KEY`**: Kích hoạt **Mock Debate Simulation (`src/mock_debate.py`)** sinh hội thoại typewriter line-by-line ngẫu nhiên nhưng bám sát chặt chẽ nhân cách của 10 Agents (ví dụ: Chuyên gia kỹ thuật phân tích chỉ số RSI, Chuyên gia Web3 kêu gọi HODL). Cấu trúc JSON trả ra khớp 100% định dạng của Real Agent để Frontend render mượt mà.
-*   **Khi CÓ `GEMINI_API_KEY`**: Chạy đồ thị LangGraph thực tế. 9 Specialists sử dụng **Gemini 1.5 Flash** (tối ưu tốc độ, chi phí) và Moderator sử dụng **Gemini 1.5 Pro** (tối ưu lập luận logic).
+Each agent is defined by a distinct system prompt and personality:
+1. **Technical Analyst (`TECH_A`)**: Hyper-rational, chart-focused, and skeptical of hype. Relies on RSI, MACD, and volume profiles.
+2. **Fundamental Analyst (`FUND_A`)**: Conservative value investor modeled after Warren Buffett. Focuses on earnings quality, margins, Moats, and cash flows.
+3. **Macroeconomics Specialist (`MACRO_A`)**: Academic and systemic. Evaluates central bank interest policies, CPI, M2 supply, and yields.
+4. **Geopolitical Analyst (`GEOPOL_A`)**: Alert and pragmatic. Views market changes as secondary to state embargoes, OPEC quotas, and resource conflicts.
+5. **Sentiment Lead (`SENT_A`)**: Energetic and retail-focused. Monitors Twitter, Reddit, and fear-and-greed indexes to warn of crowd euphoria or FUD.
+6. **Crypto Specialist (`CRYPTO_A`)**: Enthusiastic Web3 native. Analyzes smart contract logs, exchange inflows, whale wallet distributions, and gas fees.
+7. **Forex Specialist (`FOREX_A`)**: Globalist currency analyst. Monitors yield spreads, balance of payments, and trade balances.
+8. **Commodity Specialist (`COMM_A`)**: Pragmatic physical industrialist. Tracks refinery capacity, supply chains, shipping queues, and metal inventories.
+9. **Risk Manager (`RISK_M`)**: Paranoid capital preservation auditor. Focuses on worst-case scenarios, position sizing, and stop loss margins.
+10. **Swarm Moderator (`MOD_O`)**: Objective and diplomatic synthesis engine. Reconciles arguments, calculates consensus scores, and handles trajectory evaluation.
 
 ---
 
-## 📊 Báo Cáo Chi Phí & Context Caching
+## 🔄 Dual Execution Modes: Mock & Real API
 
-*   **Chi phí chuẩn**: Khoảng **~$0.0106** cho 1 phiên tranh luận 3 vòng đầy đủ (9 Specialists Flash + 1 Moderator Pro).
-*   **Tối ưu hóa Caching**: Bằng cách sử dụng **Gemini Context Caching** cho các System Instruction dài cố định của 10 nhân vật, lượng token đầu vào được giảm 50%, giúp hạ chi phí xuống chỉ còn **~$0.006** cho mỗi lượt tranh luận ($18 cho 3,000 phiên chạy hàng tháng).
+To support local testing and save API credits, the Swarm Engine includes a fallback mechanism:
+* **Without `GEMINI_API_KEY`**: Automatically launches **Mock Debate Simulation (`src/mock_debate.py`)**. It generates randomized, typewriter-delayed transcripts that match agent personas (e.g. Technical Analyst discussing RSI support) and outputs JSON payloads formatted identically to real agents, ensuring frontend compatibility.
+* **With `GEMINI_API_KEY`**: Executes the live LangGraph state graph. The 9 Specialists run on **Gemini 2.5 Flash Lite** (optimizing cost and response speed) while the Swarm Moderator runs on **Gemini 2.5 Flash** (for synthesis and logic).
 
 ---
 
-## 🚀 Hướng Dẫn CLI & Khởi Chạy
+## 📊 Token & Caching Optimization
 
-### 1. Cài đặt dependencies độc lập
+* **Baseline Cost**: Approximately **~$0.0106** per complete 3-round debate session (9 Flash Lite Specialists + 1 Flash Moderator).
+* **Context Caching**: By utilizing **Gemini Context Caching** for the static system prompts of the 10 characters, input tokens are compressed by 50%, reducing execution cost to **~$0.006** per session.
+
+---
+
+## 🚀 Execution Guide (CLI)
+
+### 1. Install Dependencies
 ```bash
-# Đứng tại be/swarm-engine/
+# Navigate to be/swarm-engine
 pip install -r requirements.txt
 ```
 
-### 2. Thực thi CLI
-Chạy thử nghiệm quét tranh luận cho một mã tài sản thông qua giao diện dòng lệnh:
+### 2. Run the CLI Subprocess
+To test the LangGraph debate engine directly from your terminal:
 ```bash
+# For PowerShell:
+$env:GEMINI_API_KEY="your_api_key"
+python src/main.py --ticker BTC-USD --price 67250.45 --category CRYPTO
+
+# For Bash:
+export GEMINI_API_KEY="your_api_key"
 python src/main.py --ticker BTC-USD --price 67250.45 --category CRYPTO
 ```
-Chương trình sẽ tự động truy vấn SQLite/pgvector tìm sự kiện tương quan và bắt đầu in luồng log tranh luận ra `stdout` dạng JSON chunk-by-chunk.
+The graph will execute and stream debate logs chunk-by-chunk to `stdout` in JSON format.
 
-### 3. Kiểm thử Engine
-Chạy unit test luồng hoạt động độc lập của swarm-engine:
+### 3. Run Verification Tests
+To run unit and integration tests for the debate engine:
 ```bash
 python test_engine.py
 ```

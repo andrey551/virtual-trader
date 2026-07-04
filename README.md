@@ -1,50 +1,50 @@
-# 🌌 Virtual Trader - Hệ Thống Phân Tích Thị Trường Tài Chính Toàn Cầu
+# 🌌 Virtual Trader - Global Financial Market Analysis System
 
-**Virtual Trader** là một hệ thống phân tích và dự báo thị trường tài chính đa tài sản (chứng khoán quốc tế, tiền điện tử, ngoại hối, chỉ số) thời gian thực. Hệ thống sử dụng một mạng lưới đa tác nhân (**Multi-Agent Swarm**) lập luận phản biện được điều hành bởi mô hình **Gemini 1.5** và các công cụ thu thập dữ liệu bằng giao thức **Model Context Protocol (MCP)**.
+**Virtual Trader** is a real-time, multi-asset financial market analysis and forecasting system (covering international equities, cryptocurrency, foreign exchange, indices, commodities, and derivatives). The system leverages a critical-reasoning network of multiple agents (**Multi-Agent Swarm**) orchestrated via **LangGraph** using **Gemini 2.5** models, with data acquisition powered by the **Model Context Protocol (MCP)**.
 
-Dự án được thiết kế như một trợ lý phân tích đắc lực cho nhà đầu tư, không trực tiếp thực hiện giao dịch mà cung cấp các khuyến nghị kỹ thuật, phân tích vĩ mô, và lập bản đồ tác động của sự kiện địa chính trị thời gian thực thông qua một bảng điều khiển trực quan.
+The system is designed as an analytical co-pilot for investors. It does not execute live trades directly. Instead, it provides technical recommendations, macroeconomic analysis, and correlation mapping of geopolitical events in real-time through an interactive dashboard interface.
 
 ---
 
-## 🏛️ Sơ Đồ Kiến Trúc Hệ Thống (Architecture Flow)
+## 🏛️ System Architecture Flow
 
 ```text
                +--------------------------------------+
                |        Next.js Frontend (fe/)        |
                +------------------+-------------------+
-                                  ^
+                                   ^
                      REST / WS    |   (JSON Live Stream)
-                                  v
-            +---------------------+-----------------------+
-            |            FastAPI Backend Core             |
-            |              (be/backend-core/)             |
-            +----------+----------------------+-----------+
-                       |                      |
-            (STDIO)    |                      |   (Async Subprocess CLI)
-                       v                      v
-     +-----------------+--------+    +--------+-----------------+
-     |   Playwright MCP Crawler |    |  LangGraph Swarm Engine  |
-     |    (be/mcp-data-crawler/)|    |    (be/swarm-engine/)    |
-     +--------------------------+    +--------+-----------------+
-                                              |
-                                              v  (SQL Query)
-                                     +--------+-----------------+
-                                     |    SQLite / PostgreSQL   |
-                                     |   (similar past events)  |
-                                     +--------------------------+
+                                   v
+             +---------------------+-----------------------+
+             |            FastAPI Backend Core             |
+             |              (be/backend-core/)             |
+             +----------+----------------------+-----------+
+                        |                      |
+             (STDIO)    |                      |   (Async Subprocess CLI)
+                        v                      v
+      +-----------------+--------+    +--------+-----------------+
+      |   Playwright MCP Crawler |    |  LangGraph Swarm Engine  |
+      |    (be/mcp-data-crawler/)|    |    (be/swarm-engine/)    |
+      +--------------------------+    +--------+-----------------+
+                                               |
+                                               v  (SQL Query)
+                                      +--------+-----------------+
+                                      |    SQLite / PostgreSQL   |
+                                      |   (similar past events)  |
+                                      +--------------------------+
 ```
 
-1.  **Giao Diện Người Dùng (fe/)**: Next.js Client hiển thị Watchlist, bản đồ tương quan sự kiện vĩ mô, và một **TradingView Lightweight Charts** terminal hỗ trợ xem nến lịch sử cùng nến dự báo của AI ở nhiều khung thời gian (`1m`, `5m`, `15m`, `1h`, `1d`).
-2.  **Bộ Điều Phối (be/backend-core/)**: Máy chủ FastAPI xử lý REST API, quản lý cơ sở dữ liệu quan hệ (SQLite/PostgreSQL), duy trì bộ lập lịch background quét Google News vĩ mô, và duy trì các kết nối WebSocket trực tiếp.
-3.  **MCP Data Crawler (be/mcp-data-crawler/)**: Server MCP Python giao tiếp qua STDIO. Sử dụng Playwright/Chromium để cào dữ liệu động, tích hợp yFinance truy vấn nến/giá, và tích hợp bộ phân tích sắc thái tin tức vĩ mô (Sentiment Analyzer).
-4.  **Swarm Debate Engine (be/swarm-engine/)**: Động cơ tranh luận AI độc lập. Khi FastAPI gọi thực thi CLI qua tiến trình con (`asyncio.create_subprocess_exec`), Swarm Engine sẽ chạy đồ thị **LangGraph**:
-    *   Truy vấn CSDL tìm **3 sự kiện tương đồng trong lịch sử** và lấy dữ liệu biến động giá làm cơ sở.
-    *   Chạy 3 vòng phản biện chéo giữa 10 AI Agents có nhân cách riêng biệt.
-    *   In kết quả dạng JSON line-by-line ra `stdout`. FastAPI hứng và chuyển tiếp ngay xuống Client qua WebSocket.
+1. **User Interface (fe/)**: A Next.js client featuring a watchlist, geopolitical macro event correlation map, and a **TradingView Lightweight Charts v5** terminal. It displays historical candlesticks alongside AI-predicted candlesticks across multiple timeframes (`1m`, `5m`, `15m`, `1h`, `1d`).
+2. **Orchestrator (be/backend-core/)**: A FastAPI server handling REST APIs, managing database structures (SQLite or PostgreSQL), maintaining background scheduler loops to scan global news, and managing live WebSockets connections.
+3. **MCP Data Crawler (be/mcp-data-crawler/)**: A Python MCP server communicating via standard I/O (STDIO). It uses Playwright/Chromium to crawl dynamic websites, utilizes yFinance for market charts, and performs news sentiment scoring (Sentiment Analyzer).
+4. **Swarm Debate Engine (be/swarm-engine/)**: An independent AI reasoning engine. When backend-core triggers the CLI via a subprocess (`asyncio.create_subprocess_exec`), the Swarm Engine runs a **LangGraph** state graph:
+   * Queries the database to retrieve **3 similar historical events** and their subsequent 5-day price trajectories as empirical context.
+   * Conducts up to 2 rounds of cross-criticism and debate among up to 10 AI Agents with highly distinct, customized personas.
+   * Outputs JSON line-by-line to `stdout`, which FastAPI reads and streams to the client via WebSockets.
 
 ---
 
-## 📂 Sơ Đồ Thư Mục Dự Án
+## 📂 Project Directory Structure
 
 ```text
 virtual-trader/
@@ -52,82 +52,83 @@ virtual-trader/
 │   ├── backend-core/        # FastAPI Core Orchestrator (Port 8000)
 │   │   ├── src/models/      # SQLAlchemy Schemas (Asset, Event, Recommendation, Debate)
 │   │   ├── src/routes/      # REST API & WebSockets (Prices, Swarm Debate)
-│   │   └── virtual_trader.db# SQLite Database cục bộ
+│   │   └── virtual_trader.db# Local SQLite Database
 │   ├── mcp-data-crawler/    # Python Playwright MCP Server (STDIO)
-│   │   ├── src/tools/       # Handlers cào web, yFinance, Binance API, Google News RSS
+│   │   ├── src/tools/       # Web scraping, yFinance, Binance API, Google News RSS tools
 │   │   └── src/utils/       # Thread-safe Caching & Sentiment Scoring
-│   └── swarm-engine/        # LangGraph AI Agents Debate Engine (CLI / Subprocess)
-│       ├── src/personas.py  # System prompts định hình nhân cách cho 10 AI Agents
-│       ├── src/graph.py     # Cấu trúc đồ thị LangGraph (Flash Specialists -> Pro Moderator)
-│       └── src/mock_debate.py# Bộ mô phỏng offline typewriter debate khi thiếu API key
+│   ├── swarm-engine/        # LangGraph AI Agents Debate Engine (CLI / Subprocess)
+│   │   ├── src/personas.py  # System prompts defining the 10 AI Agent personalities
+│   │   ├── src/graph.py     # LangGraph state graph structure (Specialists -> Moderator)
+│   │   └── src/mock_debate.py# Offline typewriter simulation fallback when API key is missing
+│   └── math-tools/          # Math & ML forecasting MCP server (GBM, Holt-Winters, Bayesian Ridge)
 ├── fe/                      # Next.js 16 Client Application (Port 3000)
 │   ├── src/app/analysis/    # Analytics Terminal (Lightweight Charts v5 & Indicators)
-│   ├── src/app/events/      # Bản đồ mạng lưới tương quan địa chính trị vĩ mô
-│   └── src/components/      # Reusable Sidebar navigation và Layout
+│   ├── src/app/events/      # Global macroeconomic & geopolitical correlation map
+│   └── src/components/      # Reusable Sidebar navigation and layout components
 ├── .github/workflows/       # GitHub Actions CI pipeline
-└── README.md                # Tệp hướng dẫn tổng quan này
+└── README.md                # General system overview guide
 ```
 
 ---
 
-## 🛠️ Công Nghệ Sử Dụng
+## 🛠️ Technology Stack
 
-*   **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, TypeScript, **TradingView Lightweight Charts v5**.
-*   **FastAPI Backend**: FastAPI, SQLAlchemy, APScheduler (Background News Scanner), WebSockets.
-*   **MCP Crawler**: Python, Model Context Protocol SDK, Playwright (Chromium headless), yFinance, BeautifulSoup.
-*   **Swarm debate**: LangGraph, langchain-google-genai (**Gemini 1.5 Flash/Pro**), SQLite/pgvector.
+* **Frontend**: Next.js 16 (App Router), React 19, Tailwind CSS v4, TypeScript, **TradingView Lightweight Charts v5**.
+* **FastAPI Backend**: FastAPI, SQLAlchemy, APScheduler (Background News Scanner), WebSockets.
+* **MCP Crawler**: Python, Model Context Protocol SDK, Playwright (Chromium headless), yFinance, BeautifulSoup.
+* **Swarm Debate**: LangGraph, langchain-google-genai (**Gemini 2.5 Flash/Flash-lite**), SQLite/pgvector.
+* **Math Forecasting**: Python, NumPy, Pandas, scikit-learn (Bayesian Ridge), Statsmodels (Holt-Winters).
 
 ---
 
-## 🚀 Hướng Dẫn Khởi Chạy Nhanh (Local Quickstart)
+## 🚀 Local Quickstart Guide
 
-Để khởi chạy toàn bộ hệ thống dưới local dev, bạn cần mở **3 cửa sổ Terminal** tương ứng với 3 service:
+To run the complete system locally, open **3 terminal windows** corresponding to each service:
 
-### Bước 1: Build Docker Image MCP Data Crawler
-Đảm bảo bạn đã mở Docker Desktop, sau đó build image để FastAPI backend-core có thể gọi container:
+### Step 1: Build the Playwright MCP Data Crawler Docker Image
+Ensure Docker Desktop is running, then build the crawler image so backend-core can invoke it:
 ```bash
 cd be/mcp-data-crawler
 docker build -t mcp-data-crawler .
 ```
 
-### Bước 2: Khởi Chạy FastAPI Backend Core (Terminal 1)
-Cài đặt thư viện Python và chạy máy chủ Uvicorn trên cổng `8000`:
+### Step 2: Start the FastAPI Backend Core (Terminal 1)
+Install Python dependencies and run the Uvicorn development server on port `8000`:
 ```bash
 cd be/backend-core
 pip install -r requirements.txt
 python -m uvicorn src.main:app --port 8000
 ```
 
-### Bước 3: Khởi Chạy Next.js Frontend (Terminal 2)
-Cài đặt thư viện Node và chạy máy chủ phát triển Next.js trên cổng `3000`:
+### Step 3: Run the Next.js Frontend (Terminal 2)
+Install node modules and start the development server on port `3000`:
 ```bash
 cd fe
 npm install
 npm run dev
 ```
 
-### Bước 4: Khởi Chạy Swarm Engine CLI độc lập (Tùy chọn - Terminal 3)
-Nếu muốn chạy thử đồ thị tranh luận vĩ mô của 10 Agents trực tiếp dưới dòng lệnh:
+### Step 4: Run the Swarm Engine CLI (Optional - Terminal 3)
+If you want to run the debate graph and output results directly to the command line:
 ```bash
 cd be/swarm-engine
 pip install -r requirements.txt
-# Đảm bảo đã xuất biến môi trường nếu muốn dùng live Gemini API: export GEMINI_API_KEY="..."
+# Set environment variable: export GEMINI_API_KEY="..." (on Linux/macOS) or $env:GEMINI_API_KEY="..." (on PowerShell)
 python src/main.py --ticker BTC-USD --price 67250.45 --category CRYPTO
 ```
 
 ---
 
-## 🔧 Tự Động Hóa CI Pipeline
-Tệp workflow [.github/workflows/ci.yml](.github/workflows/ci.yml) tự động kích hoạt trên GitHub để kiểm tra linter và build thử nghiệm Next.js/FastAPI/Docker, đảm bảo chất lượng tích hợp liên tục trước khi phát hành.
+## 🔧 Continuous Integration Pipeline
+The workflow configuration file [.github/workflows/ci.yml](.github/workflows/ci.yml) triggers automatically on GitHub to verify linting and build tests for Next.js, FastAPI, and Docker configurations.
 
 ---
 
-## 🧠 Mạng Lưới Đồ Thị Tri Thức Đa Quan Hệ (Multi-Relation Knowledge Graph)
+## 🧠 Multi-Relation Knowledge Graph
 
-Hệ thống tích hợp một **Mạng lưới Đồ thị Tri thức Đa quan hệ (Multigraph)** để lưu trữ các thực thể thị trường (Asset, Sector, Macro Indicator, Abstract Event) và liên kết lập luận của AI agents:
+The system integrates a **Multi-Relation Knowledge Graph (Multigraph)** to represent financial structures (Assets, Sectors, Macroeconomic Indicators, Abstract Events) and trace the qualitative reasoning of AI agents:
 
-1. **Lập Luận Phản Biện (Semantic Graph Traversal)**: Khi phân tích một mã tài sản, Swarm Engine sẽ duyệt đồ thị tri thức trong bán kính 2 bước (2-hops) để tìm các mối liên hệ vĩ mô phức tạp (ví dụ: `AAPL -> SUPPLIES -> Taiwan Semiconductor`, `Inflation -> INFLUENCES -> Interest Rates -> DEPRESSES -> Tech Sector`).
-2. **Quy Trình Nạp Sự Kiện Trừu Tượng (Abstract Event Ingestion)**: Khi cào được tin tức mới, AI sẽ tự động phân loại sự kiện cụ thể thành một **Sự kiện Trừu tượng (Abstract Event Class)** như `Energy Supply Shock` hay `Monetary Policy Action`, sau đó cập nhật trọng số các liên kết liên quan bằng công thức **Exponential Moving Average (EMA)**.
-3. **Cơ Chế Học Luỹ Kế (Backpropagation Feedback Loop)**: Khi các khuyến nghị chốt (CLOSED) thành công hoặc thất bại, hệ thống tự động điều chỉnh tăng/giảm trọng số liên kết tương ứng trên đồ thị (ví dụ: nếu dự báo giảm đúng khi có `Energy Supply Shock`, mối quan hệ `Energy Supply Shock -> DEPRESSES -> Sector` được củng cố tăng sức mạnh liên kết).
-4. **Tự Động Settle/Decay**: Định kỳ mỗi 24 giờ, trọng số của các liên kết tạm thời do tin tức đột xuất sẽ tự động phân rã (decay) 5% để trở về mức cơ sở ổn định trong lịch sử (`historical_base_weight`).
-
+1. **Semantic Graph Traversal**: When an asset is evaluated, the Swarm Engine traverses the graph within a 2-hop radius to gather complex relationships (e.g., `AAPL -> SUPPLIES -> Taiwan Semiconductor`, `Inflation -> INFLUENCES -> Interest Rates -> DEPRESSES -> Tech Sector`).
+2. **Abstract Event Ingestion**: Scraped news articles are classified by AI into **Abstract Event Classes** (such as `Energy Supply Shock` or `Monetary Policy Action`). The link weights are updated dynamically using an **Exponential Moving Average (EMA)**.
+3. **Cumulative Feedback Loop (Backpropagation)**: Once predictions are settled (marked as CLOSED), the system adjusts the weights of the traversed graph edges (e.g., if a bearish call was successful during an `Energy Supply Shock`, the connection `Energy Supply Shock -> DEPRESSES -> Sector` is strengthened).
+4. **Automatic Settle/Decay**: Every 24 hours, temporary news-driven relationship weights decay by 5% to return to their historical baseline levels (`historical_base_weight`).
