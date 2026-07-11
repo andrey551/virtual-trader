@@ -14,8 +14,10 @@ import {
   Info,
   Search,
   Network,
-  TrendingUp
+  TrendingUp,
+  Terminal
 } from "lucide-react";
+
 
 import DynamicChart from "./DynamicChart";
 import KnowledgeGraphVisualizer from "@/components/KnowledgeGraphVisualizer";
@@ -53,6 +55,13 @@ interface AnalyticsAsset {
   forecastTimeline?: Record<string, number[]>;
 }
 
+interface ScraperLog {
+  timestamp: string;
+  source: string;
+  message: string;
+  status: 'SUCCESS' | 'INFO' | 'SYNC';
+}
+
 function AnalyticsContent() {
   const searchParams = useSearchParams();
   const symbolParam = searchParams.get("symbol") || "BTC-USD";
@@ -60,6 +69,8 @@ function AnalyticsContent() {
   const [searchQuery, setSearchQuery] = useState("");
   const [assetsList, setAssetsList] = useState<AnalyticsAsset[]>([]);
   const [bottomTab, setBottomTab] = useState<"fundamental" | "knowledge">("fundamental");
+  const [logs, setLogs] = useState<ScraperLog[]>([]);
+
 
   const [selectedAsset, setSelectedAsset] = useState<AnalyticsAsset>({
     id: "loading",
@@ -159,88 +170,90 @@ function AnalyticsContent() {
   }, []);
 
   // Load selected asset details and candles on symbol, interval, or period changes
-  useEffect(() => {
-    async function loadAssetDetail() {
-      try {
-        const detailRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}`);
-        const candleRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
+  async function loadAssetDetail() {
+    try {
+      const detailRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}`);
+      const candleRes = await fetch(`${BACKEND_URL}/api/assets/${symbolParam}/candles?interval=${selectedInterval}&period=${selectedPeriod}`);
 
-        if (detailRes.ok && candleRes.ok) {
-          const detail = await detailRes.json();
-          const candleData = await candleRes.json();
+      if (detailRes.ok && candleRes.ok) {
+        const detail = await detailRes.json();
+        const candleData = await candleRes.json();
 
-          interface ApiCandle {
-            time: string;
-            open: number;
-            high: number;
-            low: number;
-            close: number;
-            volume: number;
-          }
-
-          const rawCandles = candleData.candles.map((c: ApiCandle) => ({
-            time: c.time,
-            open: c.open,
-            high: c.high,
-            low: c.low,
-            close: c.close,
-            volume: c.volume
-          }));
-
-          // Append actual agent forecast candles (5d trajectory)
-          const candles = [...rawCandles];
-          const forecastDays = detail.forecastTimeline && detail.forecastTimeline["5d"];
-          if (candles.length > 0 && forecastDays && forecastDays.length > 0) {
-            let lastClose = candles[candles.length - 1].close;
-            for (let i = 0; i < forecastDays.length; i++) {
-              const nextClose = Number(forecastDays[i]);
-              const nextOpen = lastClose;
-              // High/low spread slightly around open/close
-              const nextHigh = Math.max(nextOpen, nextClose) * 1.002;
-              const nextLow = Math.min(nextOpen, nextClose) * 0.998;
-
-              candles.push({
-                time: `Forecast T+${i + 1}`,
-                open: nextOpen,
-                high: nextHigh,
-                low: nextLow,
-                close: nextClose,
-                volume: 0,
-                isForecast: true
-              });
-              lastClose = nextClose;
-            }
-          }
-
-          const mappedAsset = {
-            id: String(detail.id),
-            symbol: detail.ticker,
-            name: detail.name,
-            category: detail.category === "STOCKS" ? "Stocks" : (detail.category === "CRYPTO" ? "Crypto" : (detail.category === "FOREX" ? "Forex" : "Indices")),
-            price: Number(detail.price || 0.0),
-            change: Number(detail.change || 0.0),
-            changePercent: Number(detail.changePercent || 0.0),
-            marketCap: detail.marketCap || "N/A",
-            volume24h: detail.volume24h || "N/A",
-            peRatio: detail.peRatio || undefined,
-            rsi: Number(detail.rsi || 50.0),
-            macd: detail.macd || "Neutral",
-            rating: detail.system_verdict || "HOLD",
-            confidence: Number(detail.confidence_level || 0),
-            predictionAccuracy: Number(detail.accuracy_score || 0),
-            technicalReasons: detail.technicalReasons || [],
-            fundamentalReasons: detail.fundamentalReasons || [],
-            candles: candles,
-            forecastTimeline: detail.forecastTimeline || {}
-          };
-          setSelectedAsset(mappedAsset);
+        interface ApiCandle {
+          time: string;
+          open: number;
+          high: number;
+          low: number;
+          close: number;
+          volume: number;
         }
-      } catch (err) {
-        console.error("Failed to load asset details:", err);
+
+        const rawCandles = candleData.candles.map((c: ApiCandle) => ({
+          time: c.time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume
+        }));
+
+        // Append actual agent forecast candles (5d trajectory)
+        const candles = [...rawCandles];
+        const forecastDays = detail.forecastTimeline && detail.forecastTimeline["5d"];
+        if (candles.length > 0 && forecastDays && forecastDays.length > 0) {
+          let lastClose = candles[candles.length - 1].close;
+          for (let i = 0; i < forecastDays.length; i++) {
+            const nextClose = Number(forecastDays[i]);
+            const nextOpen = lastClose;
+            // High/low spread slightly around open/close
+            const nextHigh = Math.max(nextOpen, nextClose) * 1.002;
+            const nextLow = Math.min(nextOpen, nextClose) * 0.998;
+
+            candles.push({
+              time: `Forecast T+${i + 1}`,
+              open: nextOpen,
+              high: nextHigh,
+              low: nextLow,
+              close: nextClose,
+              volume: 0,
+              isForecast: true
+            });
+            lastClose = nextClose;
+          }
+        }
+
+        const mappedAsset = {
+          id: String(detail.id),
+          symbol: detail.ticker,
+          name: detail.name,
+          category: detail.category === "STOCKS" ? "Stocks" : (detail.category === "CRYPTO" ? "Crypto" : (detail.category === "FOREX" ? "Forex" : "Indices")),
+          price: Number(detail.price || 0.0),
+          change: Number(detail.change || 0.0),
+          changePercent: Number(detail.changePercent || 0.0),
+          marketCap: detail.marketCap || "N/A",
+          volume24h: detail.volume24h || "N/A",
+          peRatio: detail.peRatio || undefined,
+          rsi: Number(detail.rsi || 50.0),
+          macd: detail.macd || "Neutral",
+          rating: detail.system_verdict || "HOLD",
+          confidence: Number(detail.confidence_level || 0),
+          predictionAccuracy: Number(detail.accuracy_score || 0),
+          technicalReasons: detail.technicalReasons || [],
+          fundamentalReasons: detail.fundamentalReasons || [],
+          candles: candles,
+          forecastTimeline: detail.forecastTimeline || {}
+        };
+        setSelectedAsset(mappedAsset);
       }
+    } catch (err) {
+      console.error("Failed to load asset details:", err);
     }
+  }
+
+  useEffect(() => {
     loadAssetDetail();
   }, [symbolParam, selectedInterval, selectedPeriod]);
+
 
   // WebSocket Live Price wiggler for the selected asset
   useEffect(() => {
@@ -267,19 +280,127 @@ function AnalyticsContent() {
     return () => ws.close();
   }, [symbolParam]);
 
-  // Optimization simulation loop
+  // Connect to live AI Agent debate stream for the current symbol
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveStatus("COMPUTING...");
-      setForecastOffset((Math.random() - 0.5) * (selectedAsset.price * 0.005));
+    if (!symbolParam) return;
+    
+    setLiveStatus("CONNECTING...");
+    
+    // Clear logs and show initial loading state
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+    setLogs([
+      { timestamp: timeStr, source: "SYSTEM", message: `Initializing swarm session for ${symbolParam}...`, status: "SUCCESS" }
+    ]);
 
-      setTimeout(() => {
-        setLiveStatus("SYS_ACTIVE");
-      }, 1500);
-    }, 4500);
+    const ws = new WebSocket(`${WS_URL}/ws/swarm-debate/${symbolParam}`);
+    
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        const now = new Date();
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+        
+        if (data.status === "TYPING") {
+          setLiveStatus("COMPUTING...");
+          const newLog: ScraperLog = {
+            timestamp: timeStr,
+            source: data.avatar_code || data.agent_name,
+            message: "Thinking...",
+            status: "INFO"
+          };
+          setLogs(prev => [newLog, ...prev.slice(0, 8)]);
+        } else if (data.status === "SPEAKING") {
+          setLiveStatus("COMPUTING...");
+          setLogs(prev => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            if (updated[0].source === (data.avatar_code || data.agent_name)) {
+              const currentMsg = updated[0].message === "Thinking..." ? "" : updated[0].message;
+              updated[0] = {
+                ...updated[0],
+                message: currentMsg + (data.message_chunk || "")
+              };
+            }
+            return updated;
+          });
+        } else if (data.status === "COMPLETED") {
+          setLogs(prev => {
+            if (prev.length === 0) return prev;
+            const updated = [...prev];
+            if (updated[0].source === (data.avatar_code || data.agent_name)) {
+              updated[0] = {
+                ...updated[0],
+                message: data.message,
+                status: "SUCCESS"
+              };
+            }
+            return updated;
+          });
+        } else if (data.type === "consensus_forecast") {
+          setLiveStatus("SYS_ACTIVE");
+          const newLog: ScraperLog = {
+            timestamp: timeStr,
+            source: "MODERATOR",
+            message: `Swarm consensus finalized: ${data.verdict} (${data.confidence}% confidence)`,
+            status: "SUCCESS"
+          };
+          setLogs(prev => [newLog, ...prev]);
+          
+          setSelectedAsset((prev: AnalyticsAsset) => {
+            if (!prev) return prev;
+            
+            // Filter out old forecast candles and append new forecast candles
+            const candles = [...prev.candles.filter(c => !c.isForecast)];
+            const forecastDays = data.predict_price_5d;
+            if (candles.length > 0 && forecastDays && forecastDays.length > 0) {
+              let lastClose = candles[candles.length - 1].close;
+              for (let i = 0; i < forecastDays.length; i++) {
+                const nextClose = Number(forecastDays[i]);
+                const nextOpen = lastClose;
+                const nextHigh = Math.max(nextOpen, nextClose) * 1.002;
+                const nextLow = Math.min(nextOpen, nextClose) * 0.998;
 
-    return () => clearInterval(interval);
-  }, [selectedAsset.symbol, selectedAsset.price]);
+                candles.push({
+                  time: `Forecast T+${i + 1}`,
+                  open: nextOpen,
+                  high: nextHigh,
+                  low: nextLow,
+                  close: nextClose,
+                  volume: 0,
+                  isForecast: true
+                });
+                lastClose = nextClose;
+              }
+            }
+
+            return {
+              ...prev,
+              rating: data.verdict || prev.rating,
+              confidence: Number(data.confidence || prev.confidence),
+              candles: candles,
+              forecastTimeline: {
+                "5s": data.predict_price_5s || [],
+                "5m": data.predict_price_5m || [],
+                "5h": data.predict_price_5h || [],
+                "5d": data.predict_price_5d || []
+              }
+            };
+          });
+        }
+
+      } catch {
+        // ignore
+      }
+    };
+    
+    ws.onclose = () => {
+      setLiveStatus("SYS_ACTIVE");
+    };
+    
+    return () => ws.close();
+  }, [symbolParam]);
+
 
   const [relatedEvents, setRelatedEvents] = useState<{
     id: string;
@@ -692,8 +813,41 @@ function AnalyticsContent() {
         {/* Right Column: Events & Indexes */}
         <div className="space-y-8">
 
+          {/* Swarm Engine Live Terminal (quantitative logs) */}
+          <div className="relative p-5 rounded-2xl border border-zinc-800 bg-zinc-950 text-emerald-400 font-mono text-[10px] space-y-3 shadow-inner overflow-hidden select-none">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                <span className="font-bold text-zinc-400 uppercase tracking-widest text-[9px] flex items-center gap-1">
+                  <Terminal className="w-3 h-3 text-emerald-500" />
+                  Swarm Engine Logs
+                </span>
+              </div>
+              <span className="text-[8px] text-zinc-500">LIVESTREAM // {selectedAsset.symbol}</span>
+            </div>
+            
+            <div className="space-y-1.5 max-h-36 overflow-y-auto scrollbar-none">
+              {logs.map((log, idx) => (
+                <div key={idx} className="flex items-start gap-2 leading-relaxed animate-fadeIn">
+                  <span className="text-zinc-500">[{log.timestamp}]</span>
+                  <span className={`font-bold shrink-0 ${
+                    log.status === 'SUCCESS' ? 'text-emerald-400' :
+                    log.status === 'SYNC' ? 'text-amber-400' : 'text-blue-400'
+                  }`}>
+                    {log.source} {"//"}
+                  </span>
+                  <span className="text-zinc-300 truncate">{log.message}</span>
+                </div>
+              ))}
+              {logs.length === 0 && (
+                <div className="text-zinc-500 italic">No logs available for this session.</div>
+              )}
+            </div>
+          </div>
+
           {/* Related Event Updates (Accordion Expandable) */}
           <div className="p-6 rounded-2xl border border-[#ebdcb9] bg-white shadow-sm space-y-4 flex flex-col justify-between">
+
             <div className="space-y-4">
               <div className="flex items-center gap-2 border-b border-[#ebdcb9]/40 pb-3">
                 <AlertCircle className="w-4 h-4 text-amber-600" />

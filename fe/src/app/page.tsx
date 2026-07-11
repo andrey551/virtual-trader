@@ -30,58 +30,22 @@ export default function Home() {
 
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Connect to live AI Agent debate stream
+  // Load recent debate logs from database on start
   useEffect(() => {
-    const ws = new WebSocket(`${WS_URL}/ws/swarm-debate/live`);
-    
-    ws.onmessage = (event) => {
+    async function loadRecentDebates() {
       try {
-        const data = JSON.parse(event.data);
-        const now = new Date();
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-        
-        if (data.status === "TYPING") {
-          const newLog: ScraperLog = {
-            timestamp: timeStr,
-            source: data.avatar_code || data.agent_name,
-            message: "Thinking...",
-            status: "INFO"
-          };
-          setLogs(prev => [newLog, ...prev.slice(0, 8)]);
-        } else if (data.status === "SPEAKING") {
-          setLogs(prev => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            if (updated[0].source === (data.avatar_code || data.agent_name)) {
-              const currentMsg = updated[0].message === "Thinking..." ? "" : updated[0].message;
-              updated[0] = {
-                ...updated[0],
-                message: currentMsg + (data.message_chunk || "")
-              };
-            }
-            return updated;
-          });
-        } else if (data.status === "COMPLETED") {
-          setLogs(prev => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            if (updated[0].source === (data.avatar_code || data.agent_name)) {
-              updated[0] = {
-                ...updated[0],
-                message: data.message,
-                status: "SUCCESS"
-              };
-            }
-            return updated;
-          });
+        const res = await fetch(`${BACKEND_URL}/api/assets/debate/recent?limit=8`);
+        if (res.ok) {
+          const data = await res.json();
+          setLogs(data);
         }
       } catch {
-        // ignore
+        // Fallback silently
       }
-    };
-    
-    return () => ws.close();
+    }
+    loadRecentDebates();
   }, []);
+
 
   interface DashboardAsset {
     id: string;

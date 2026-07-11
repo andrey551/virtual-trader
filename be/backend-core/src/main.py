@@ -243,8 +243,9 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
     price = 67250.45
     
     # Try resolving asset from ticker if session_id is a ticker
-    if session_id != "live" and "-" in session_id:
+    if session_id != "live":
         ticker = session_id.upper()
+
         
     db = SessionLocal()
     try:
@@ -288,7 +289,20 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                             "session_id": session_id
                         }
                         await websocket.send_json(payload)
-                        await asyncio.sleep(0.1) # small delay for UX
+                    
+                    # Send the final consensus forecast payload from cache
+                    consensus_payload = {
+                        "type": "consensus_forecast",
+                        "ticker": ticker,
+                        "verdict": asset.system_verdict if asset else "HOLD",
+                        "confidence": float(asset.confidence_level) if asset else 50.0,
+                        "predict_price_5s": cache.predict_price_5s,
+                        "predict_price_5m": cache.predict_price_5m,
+                        "predict_price_5h": cache.predict_price_5h,
+                        "predict_price_5d": cache.predict_price_5d,
+                        "session_id": session_id
+                    }
+                    await websocket.send_json(consensus_payload)
                     
                     db.close()
                     # Keep connection alive
@@ -335,8 +349,11 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                         "predict_price_5s": data.get("predict_price_5s"),
                         "predict_price_5m": data.get("predict_price_5m"),
                         "predict_price_5h": data.get("predict_price_5h"),
-                        "predict_price_5d": data.get("predict_price_5d")
+                        "predict_price_5d": data.get("predict_price_5d"),
+                        "verdict": data.get("verdict"),
+                        "confidence": data.get("confidence")
                     })
+
                 
                 # Save completed messages to DB cache
                 if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
@@ -448,6 +465,14 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
             # Save Prediction Cache (if data was collected successfully)
             if temp_forecast_data:
                 try:
+                    # Update Asset table with new verdict and confidence
+                    asset = db.query(Asset).filter(Asset.ticker == ticker.upper()).first()
+                    if asset:
+                        asset.system_verdict = temp_forecast_data.get("verdict") or asset.system_verdict
+                        asset.confidence_level = temp_forecast_data.get("confidence") or asset.confidence_level
+                        db.commit()
+                        print(f"[WebSocket Debate] Updated Asset {ticker} to {asset.system_verdict} ({asset.confidence_level}%)")
+                    
                     new_cache = PredictionCache(
                         ticker=ticker,
                         session_id=db_session_id,
@@ -463,6 +488,7 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                 except Exception as ce:
                     print(f"[WebSocket Debate Cache Error] {ce}")
                     db.rollback()
+
                 
             db.close()
             

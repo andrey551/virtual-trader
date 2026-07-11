@@ -451,3 +451,22 @@ async def get_asset_candles(
     if res.get("status") == "error":
         raise HTTPException(status_code=400, detail=res.get("message"))
     return res
+
+@router.get("/debate/recent")
+async def get_recent_debates(
+    limit: int = Query(10, description="Number of logs to retrieve"),
+    db: Session = Depends(get_db)
+):
+    from src.models.debate import AgentDebate
+    debates = db.query(AgentDebate).order_by(AgentDebate.id.desc()).limit(limit).all()
+    results = []
+    for d in debates:
+        time_str = d.created_at.strftime("%H:%M:%S")
+        results.append({
+            "timestamp": time_str,
+            "source": d.avatar_code or d.agent_name,
+            "message": d.message,
+            "status": "SUCCESS"
+        })
+    return results
+
