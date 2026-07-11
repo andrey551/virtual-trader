@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Use Docker to run Playwright MCP crawler in container environment
     MCP_USE_DOCKER: bool = False
     
+    # URL for swarm-engine service (if running in Docker or microservice mode)
+    SWARM_ENGINE_URL: Optional[str] = None
+
+    
     class Config:
         env_file = ENV_PATH
         case_sensitive = True

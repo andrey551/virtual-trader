@@ -296,148 +296,173 @@ async def websocket_debate_endpoint(websocket: WebSocket, session_id: str):
                         await websocket.receive_text()
                         await asyncio.sleep(1)
                     return
+        except WebSocketDisconnect:
+            raise
         except Exception as e:
             print(f"[WebSocket Debate] Cache check failed: {e}")
             
         if not cache_hit:
             SWARM_CACHE_LOOKUPS.labels(status="miss").inc()
             
-        use_docker = os.getenv("MCP_USE_DOCKER", "False").lower() in ("true", "1", "yes")
-        cwd = None
-        if use_docker:
-            # Spawn swarm-engine in its own container on the host docker daemon
-            cmd = [
-                "docker", "run", "-i", "--rm",
-                "-v", "/var/run/docker.sock:/var/run/docker.sock",
-                "--network", "virtual-trader_default",
-                "-e", f"GEMINI_API_KEY={os.getenv('GEMINI_API_KEY', '')}",
-                "-e", f"DATABASE_URL=postgresql://postgres:postgres@db:5432/virtual_trader",
-                "-e", f"MCP_USE_DOCKER={os.getenv('MCP_USE_DOCKER', 'False')}",
-                "virtual-trader-swarm-engine",
-                "--ticker", ticker,
-                "--category", category,
-                "--price", str(price)
-            ]
-        else:
-            # Build absolute path to swarm-engine main.py CLI locally
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
-            cmd = [
-                sys.executable,
-                script_path,
-                "--ticker", ticker,
-                "--category", category,
-                "--price", str(price)
-            ]
-            cwd = os.path.dirname(script_path)
-        
-        print(f"[WebSocket Debate] Spawning swarm-engine: {' '.join(cmd)}")
-        
-        # Propagate GEMINI_API_KEY explicitly to child process environment
-        env = os.environ.copy()
-        if settings.GEMINI_API_KEY:
-            env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
-        
+        swarm_engine_url = os.getenv("SWARM_ENGINE_URL") or getattr(settings, "SWARM_ENGINE_URL", None)
         db_session_id = f"cache_{uuid.uuid4().hex[:8]}"
         temp_forecast_data = {}
         
+        async def _process_swarm_line(line_str: str):
+            try:
+                # Parse JSON output from swarm-engine
+                data = json.loads(line_str)
+                print(f"[Swarm Engine] {line_str}")
+                sys.stdout.flush()
+                
+                # Intercept metrics payload
+                if data.get("type") == "metrics":
+                    agent_name = data.get("agent_name", "Unknown")
+                    model = data.get("model", "unknown")
+                    if data.get("event") == "awake":
+                        SWARM_AGENT_AWAKENINGS.labels(agent_name=agent_name, model=model).inc()
+                    prompt_tokens = data.get("prompt_tokens", 0)
+                    completion_tokens = data.get("completion_tokens", 0)
+                    total_tokens = data.get("total_tokens", 0)
+                    SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="prompt").inc(prompt_tokens)
+                    SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="completion").inc(completion_tokens)
+                    SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="total").inc(total_tokens)
+                    return
+                
+                # Intercept consensus_forecast
+                if data.get("type") == "consensus_forecast":
+                    temp_forecast_data.update({
+                        "predict_price_5s": data.get("predict_price_5s"),
+                        "predict_price_5m": data.get("predict_price_5m"),
+                        "predict_price_5h": data.get("predict_price_5h"),
+                        "predict_price_5d": data.get("predict_price_5d")
+                    })
+                
+                # Save completed messages to DB cache
+                if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
+                    try:
+                        new_debate = AgentDebate(
+                            session_id=db_session_id,
+                            ticker=ticker,
+                            agent_name=data.get("agent_name", "Unknown"),
+                            avatar_code=data.get("avatar_code", "UNK"),
+                            message=data["message"]
+                        )
+                        db.add(new_debate)
+                        db.commit()
+                    except Exception as dbe:
+                        print(f"[WebSocket Debate DB Error] {dbe}")
+                        db.rollback()
+                        
+                # Inject session_id parameter for frontend tracking
+                data["session_id"] = session_id
+                await websocket.send_json(data)
+            except json.JSONDecodeError:
+                # Non-JSON logs (e.g. stdout prints or traceback errors)
+                print(f"[WebSocket Debate Log] {line_str}")
+                sys.stdout.flush()
+
         print("[WebSocket Debate] Waiting for Swarm Semaphore...")
         async with SWARM_SEMAPHORE:
-            print("[WebSocket Debate] Semaphore acquired. Starting process.")
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env
-            )
+            print("[WebSocket Debate] Semaphore acquired.")
             
-            # Read standard output line-by-line asynchronously
-            while True:
-                line = await process.stdout.readline()
-                if not line:
-                    break
-                    
-                line_str = line.decode('utf-8').strip()
-                if not line_str:
-                    continue
-                    
-                try:
-                    # Parse JSON output from swarm-engine
-                    data = json.loads(line_str)
-                    print(f"[Swarm Engine] {line_str}")
-                    sys.stdout.flush()
-                    
-                    # Intercept metrics payload
-                    if data.get("type") == "metrics":
-                        agent_name = data.get("agent_name", "Unknown")
-                        model = data.get("model", "unknown")
-                        if data.get("event") == "awake":
-                            SWARM_AGENT_AWAKENINGS.labels(agent_name=agent_name, model=model).inc()
-                        prompt_tokens = data.get("prompt_tokens", 0)
-                        completion_tokens = data.get("completion_tokens", 0)
-                        total_tokens = data.get("total_tokens", 0)
-                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="prompt").inc(prompt_tokens)
-                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="completion").inc(completion_tokens)
-                        SWARM_TOKEN_USAGE.labels(agent_name=agent_name, model=model, token_type="total").inc(total_tokens)
-                        continue  # Do not forward metrics JSON to the frontend
-                    
-                    # Intercept consensus_forecast
-                    if data.get("type") == "consensus_forecast":
-                        temp_forecast_data = {
-                            "predict_price_5s": data.get("predict_price_5s"),
-                            "predict_price_5m": data.get("predict_price_5m"),
-                            "predict_price_5h": data.get("predict_price_5h"),
-                            "predict_price_5d": data.get("predict_price_5d")
-                        }
-                    
-                    # Save completed messages to DB cache
-                    if "message" in data and data.get("status") == "COMPLETED" and data["message"].strip():
-                        try:
-                            new_debate = AgentDebate(
-                                session_id=db_session_id,
-                                ticker=ticker,
-                                agent_name=data.get("agent_name", "Unknown"),
-                                avatar_code=data.get("avatar_code", "UNK"),
-                                message=data["message"]
-                            )
-                            db.add(new_debate)
-                            db.commit()
-                        except Exception as dbe:
-                            print(f"[WebSocket Debate DB Error] {dbe}")
-                            db.rollback()
-                            
-                    # Inject session_id parameter for frontend tracking
-                    data["session_id"] = session_id
-                    await websocket.send_json(data)
-                except json.JSONDecodeError:
-                    # Non-JSON logs (e.g. stdout prints or traceback errors)
-                    print(f"[WebSocket Debate Subprocess Log] {line_str}")
-                    
-            # Wait for subprocess completion
-            stderr_data = await process.stderr.read()
-            if stderr_data:
-                print(f"[WebSocket Debate Subprocess Stderr] {stderr_data.decode('utf-8')}")
+            if swarm_engine_url:
+                # Microservice mode: query persistent swarm-engine container via HTTP stream
+                import aiohttp
+                url = f"{swarm_engine_url}/debate"
+                params = {"ticker": ticker, "category": category, "price": price}
+                print(f"[WebSocket Debate] Connecting to swarm-engine service: {url} with params {params}")
                 
-            await process.wait()
-            
-            # Save Prediction Cache
-            try:
-                new_cache = PredictionCache(
-                    ticker=ticker,
-                    session_id=db_session_id,
-                    price_at_predict=price,
-                    predict_price_5s=temp_forecast_data.get("predict_price_5s"),
-                    predict_price_5m=temp_forecast_data.get("predict_price_5m"),
-                    predict_price_5h=temp_forecast_data.get("predict_price_5h"),
-                    predict_price_5d=temp_forecast_data.get("predict_price_5d")
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, params=params) as response:
+                            if response.status != 200:
+                                err_text = await response.text()
+                                raise RuntimeError(f"Swarm service returned status {response.status}: {err_text}")
+                                
+                            async for line in response.content:
+                                line_str = line.decode('utf-8').strip()
+                                if line_str:
+                                    await _process_swarm_line(line_str)
+                except Exception as stream_err:
+                    print(f"[WebSocket Debate Service Stream Error] {stream_err}")
+                    await websocket.send_json({"status": "error", "message": f"Swarm Engine Service connection error: {stream_err}"})
+                    status = "error"
+            else:
+                # Fallback CLI mode: spawn local python command
+                use_docker = os.getenv("MCP_USE_DOCKER", "False").lower() in ("true", "1", "yes")
+                cwd = None
+                if use_docker:
+                    # Spawn swarm-engine in its own container on the host docker daemon
+                    cmd = [
+                        "docker", "run", "-i", "--rm",
+                        "-v", "/var/run/docker.sock:/var/run/docker.sock",
+                        "--network", "virtual-trader_default",
+                        "-e", f"GEMINI_API_KEY={os.getenv('GEMINI_API_KEY', '')}",
+                        "-e", f"DATABASE_URL=postgresql://postgres:postgres@db:5432/virtual_trader",
+                        "-e", f"MCP_USE_DOCKER={os.getenv('MCP_USE_DOCKER', 'False')}",
+                        "virtual-trader-swarm-engine",
+                        "--ticker", ticker,
+                        "--category", category,
+                        "--price", str(price)
+                    ]
+                else:
+                    # Build absolute path to swarm-engine main.py CLI locally
+                    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                    script_path = os.path.abspath(os.path.join(base_dir, "..", "swarm-engine", "src", "main.py"))
+                    cmd = [
+                        sys.executable,
+                        script_path,
+                        "--ticker", ticker,
+                        "--category", category,
+                        "--price", str(price)
+                    ]
+                    cwd = os.path.dirname(script_path)
+                
+                print(f"[WebSocket Debate] Spawning local CLI subprocess: {' '.join(cmd)}")
+                env = os.environ.copy()
+                if settings.GEMINI_API_KEY:
+                    env["GEMINI_API_KEY"] = settings.GEMINI_API_KEY
+                
+                process = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    cwd=cwd,
+                    env=env
                 )
-                db.add(new_cache)
-                db.commit()
-                print(f"[WebSocket Debate] Saved cache for {ticker} at price {price}")
-            except Exception as ce:
-                print(f"[WebSocket Debate Cache Error] {ce}")
-                db.rollback()
+                
+                while True:
+                    line = await process.stdout.readline()
+                    if not line:
+                        break
+                    line_str = line.decode('utf-8').strip()
+                    if line_str:
+                        await _process_swarm_line(line_str)
+                        
+                stderr_data = await process.stderr.read()
+                if stderr_data:
+                    print(f"[WebSocket Debate Subprocess Stderr] {stderr_data.decode('utf-8')}")
+                await process.wait()
+            
+            # Save Prediction Cache (if data was collected successfully)
+            if temp_forecast_data:
+                try:
+                    new_cache = PredictionCache(
+                        ticker=ticker,
+                        session_id=db_session_id,
+                        price_at_predict=price,
+                        predict_price_5s=temp_forecast_data.get("predict_price_5s"),
+                        predict_price_5m=temp_forecast_data.get("predict_price_5m"),
+                        predict_price_5h=temp_forecast_data.get("predict_price_5h"),
+                        predict_price_5d=temp_forecast_data.get("predict_price_5d")
+                    )
+                    db.add(new_cache)
+                    db.commit()
+                    print(f"[WebSocket Debate] Saved cache for {ticker} at price {price}")
+                except Exception as ce:
+                    print(f"[WebSocket Debate Cache Error] {ce}")
+                    db.rollback()
                 
             db.close()
             

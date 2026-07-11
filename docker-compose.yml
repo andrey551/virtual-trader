@@ -33,6 +33,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       MCP_USE_DOCKER: "True"
       BACKEND_CORS_ORIGINS: '["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost"]'
+      SWARM_ENGINE_URL: "http://swarm-engine:8002"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:
@@ -106,13 +107,24 @@ services:
     profiles:
       - build-only
 
-  virtual-trader-swarm-engine:
+  swarm-engine:
     build:
       context: ./be/swarm-engine
       dockerfile: Dockerfile
-    image: virtual-trader-swarm-engine
-    profiles:
-      - build-only
+    container_name: virtual_trader_swarm_engine
+    restart: always
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/virtual_trader
+      MCP_USE_DOCKER: "True"
+    ports:
+      - "8002:8002"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      db:
+        condition: service_healthy
+
 
 volumes:
   postgres_data:
