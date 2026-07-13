@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, JSON
+from sqlalchemy import Column, Integer, String, Float, DateTime, JSON, Boolean
 from src.database import Base
 import datetime
 
@@ -14,3 +14,5 @@ class PredictionCache(Base):
     predict_price_5h = Column(JSON, nullable=True)
     predict_price_5d = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    is_graded = Column(Boolean, default=False, nullable=False)
+

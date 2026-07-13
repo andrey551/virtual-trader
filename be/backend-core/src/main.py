@@ -38,6 +38,8 @@ from src.models.recommendation import Recommendation
 from src.models.debate import AgentDebate
 from src.models.prediction_cache import PredictionCache
 from src.models.knowledge_graph import KnowledgeNode, KnowledgeEdge
+from src.models.grade import PredictionGrade, DailyAssetScore
+
 
 Base.metadata.create_all(bind=engine)
 

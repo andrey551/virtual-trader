@@ -59,6 +59,21 @@ services:
       backend:
         condition: service_healthy
 
+  accuracy-evaluator:
+    build:
+      context: ./be
+      dockerfile: accuracy-evaluator/Dockerfile
+    container_name: virtual_trader_accuracy_evaluator
+    restart: always
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/virtual_trader
+      BACKEND_URL: http://backend:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
   prometheus:
     image: prom/prometheus:latest
     container_name: virtual_trader_prometheus

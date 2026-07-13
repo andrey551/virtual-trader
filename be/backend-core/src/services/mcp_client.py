@@ -108,6 +108,11 @@ class MCPClientService:
             return parsed_result
         except Exception as e:
             status = "error"
+            print(f"[MCP Client Error] Failed to call tool {tool_name} with args {arguments}: {e}")
+            try:
+                print(f"[MCP Client Error Content] content_text: {content_text}")
+            except NameError:
+                pass
             return {"status": "error", "message": f"MCP execution failed: {str(e)}"}
         finally:
             duration = time.perf_counter() - start_time
