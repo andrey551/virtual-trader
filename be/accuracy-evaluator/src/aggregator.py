@@ -1,5 +1,5 @@
 import datetime
-from accuracy_evaluator.database import SessionLocal
+from .database import SessionLocal
 from src.models.prediction_cache import PredictionCache
 from src.models.grade import PredictionGrade, DailyAssetScore
 from src.models.asset import Asset

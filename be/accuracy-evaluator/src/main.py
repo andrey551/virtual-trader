@@ -1,7 +1,7 @@
 import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from accuracy_evaluator.scheduler import evaluate_and_grade_predictions
+from .scheduler import evaluate_and_grade_predictions
 
 async def main():
     print("[Evaluator Service] Starting up (Modular Architecture)...")
