@@ -1,11 +1,11 @@
 import datetime
 import asyncio
-from .database import SessionLocal
+from accuracy_evaluator.database import SessionLocal
 from src.models.prediction_cache import PredictionCache
 from src.models.grade import PredictionGrade
-from .evaluator import calculate_mape, calculate_trend_accuracy
-from .api_client import fetch_historical_candles
-from .aggregator import aggregate_daily_scores
+from accuracy_evaluator.evaluator import calculate_mape, calculate_trend_accuracy
+from accuracy_evaluator.api_client import fetch_historical_candles
+from accuracy_evaluator.aggregator import aggregate_daily_scores
 
 def find_closest_candle_price(candles, target_time: datetime.datetime) -> float:
     best_candle = None

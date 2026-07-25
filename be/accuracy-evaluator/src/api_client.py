@@ -1,5 +1,5 @@
 import httpx
-from .config import BACKEND_URL
+from accuracy_evaluator.config import BACKEND_URL
 
 async def fetch_historical_candles(ticker: str, interval: str, period: str):
     async with httpx.AsyncClient() as client:
